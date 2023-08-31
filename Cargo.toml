@@ -1,0 +1,20 @@
+[package]
+name = "door_player"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.11"
+bevy_egui = "0.21"
+parking_lot = "0.12"
+
+chrono ="0.4"
+anyhow = "1.0"
+
+[lib]
+name="door_player"
+path="src/lib.rs"
+
+[[bin]]
+name="door_player"
+path="src/main.rs"
