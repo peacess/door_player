@@ -1474,6 +1474,7 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "chrono",
+ "log",
  "parking_lot",
 ]
 
