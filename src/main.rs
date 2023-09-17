@@ -3,5 +3,5 @@
 use door_player::AppUi;
 
 fn main() {
-    AppUi::make_app().run();
+    AppUi::run_app();
 }
