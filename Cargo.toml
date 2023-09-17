@@ -5,9 +5,10 @@ edition = "2021"
 
 [dependencies]
 log = "0.4.20"
-bevy = "0.11"
-bevy_egui = "0.21"
-parking_lot = "0.12"
+#bevy = "0.11"
+#bevy_egui = "0.21"
+egui = "0.22.0"
+eframe = "0.22.0"
 
 rfd = "0.12.0"
 sdl2 = "0.35.2"
@@ -17,6 +18,7 @@ ringbuf = "0.3"
 timer="0.2.0"
 rust_kits = {git = "https://github.com/peacess/rust.git"}
 #
+parking_lot = "0.12"
 atomic = "0.6.0"
 bytemuck = "1.14.0"
 
