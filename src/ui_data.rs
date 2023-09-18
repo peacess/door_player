@@ -41,7 +41,10 @@ impl AppUi {
                             Key::Space => {
                                 let state = player.player_state.get();
                                 match state {
-                                    PlayerState::Paused | PlayerState::Stopped => {
+                                    PlayerState::Stopped => {
+                                        player.start();
+                                    }
+                                    PlayerState::Paused  => {
                                         player.resume();
                                     }
                                     PlayerState::Playing => {
