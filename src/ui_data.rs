@@ -1,6 +1,6 @@
 use std::{fs, path};
 
-use egui::{Event, Key, Ui};
+use egui::{Event, Key, PointerButton, Ui};
 
 use crate::{AudioDevice, init_audio_device_default, Player, PlayerState};
 use crate::player::Streamer;
@@ -17,49 +17,98 @@ pub struct AppUi {
 }
 
 impl AppUi {
-    pub(crate) fn handle_key_player(ui: &mut Ui, player: &mut Player) {
-        ui.input(|k| {
-            for e in &k.events {
-                let mut seek = 0.0f32;
-                match e {
-                    Event::Key { key, pressed: true, .. } => {
-                        match *key {
-                            Key::ArrowLeft => {
-                                let mut v = player.video_streamer.lock();
-                                let els = v.elapsed_ms().get() as f32 - 1.0;
-                                if els > 0.0 {
+    pub(crate) fn handle_key_player(&mut self, ui: &mut Ui, _ctx: &egui::Context) {
+        let mut set_player_none = false;
+        if let Some(player) = &mut self.player {
+            let p = {
+                if self.no_scale {
+                    egui::Vec2::new(player.width as f32, player.height as f32)
+                } else {
+                    AppUi::compute_player_size(egui::Vec2::new(player.width as f32, player.height as f32),
+                                               egui::Vec2::new(ui.min_rect().width(), ui.min_rect().height()))
+                }
+            };
+            ui.centered_and_justified(|ui| {
+                player.ui(ui, [p.x, p.y]);
+            });
+
+            ui.input(|k| {
+                for e in &k.events {
+                    let mut seek = 0.0f32;
+                    match e {
+                        Event::Key { key: Key::Escape, pressed: true, .. } => {
+                            set_player_none = true;
+                        }
+                        Event::Key { key, pressed: true, .. } => {
+                            match *key {
+                                Key::ArrowLeft => {
+                                    let mut v = player.video_streamer.lock();
+                                    let els = v.elapsed_ms().get() as f32 - 1.0;
+                                    if els > 0.0 {
+                                        seek = els / v.duration_ms() as f32;
+                                    }
+                                }
+                                Key::ArrowRight => {
+                                    let mut v = player.video_streamer.lock();
+                                    let els = v.elapsed_ms().get() as f32 + 1.0;
                                     seek = els / v.duration_ms() as f32;
                                 }
+                                Key::ArrowUp => {}
+                                Key::ArrowDown => {}
+                                Key::Space => {
+                                    let state = player.player_state.get();
+                                    match state {
+                                        PlayerState::Stopped => {
+                                            player.start();
+                                        }
+                                        PlayerState::Paused => {
+                                            player.resume();
+                                        }
+                                        PlayerState::Playing => {
+                                            player.pause();
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
                             }
-                            Key::ArrowRight => {
-                                let mut v = player.video_streamer.lock();
-                                let els = v.elapsed_ms().get() as f32 + 1.0;
-                                seek = els / v.duration_ms() as f32;
-                            }
-                            Key::ArrowUp => {}
-                            Key::ArrowDown => {}
-                            Key::Space => {
-                                let state = player.player_state.get();
-                                match state {
-                                    PlayerState::Stopped => {
-                                        player.start();
+                        }
+                        _ => {}
+                    }
+                    if seek > 0.0 {
+                        player.seek(seek);
+                    }
+                }
+            });
+        }
+        if set_player_none {
+            self.player = None;
+        }
+    }
+
+    pub(crate) fn handle_key_no_player(&mut self, ui: &Ui, ctx: &egui::Context) {
+        ui.input(|k| {
+            for e in &k.events {
+                match e {
+                    Event::Key { key: Key::Space, pressed: true, .. } | Event::PointerButton { button: PointerButton::Primary, pressed: true, .. } => {
+                        if let Some(buf) = rfd::FileDialog::new().add_filter("videos", &["mp4"]).pick_file() {
+                            let f = buf.as_path().to_string_lossy().to_string();
+                            self.media_path = f;
+                            if !self.media_path.is_empty() {
+                                let f = self.media_path.clone();
+                                // self.media_path = "".to_owned();
+                                match Player::new(ctx, &f.replace("\"", "")).and_then(|p| p.with_audio(&mut self.audio_device.as_mut().unwrap())) {
+                                    Ok(p) => {
+                                        self.player = Some(p);
                                     }
-                                    PlayerState::Paused  => {
-                                        player.resume();
+                                    Err(e) => {
+                                        log::error!("{}", e);
                                     }
-                                    PlayerState::Playing => {
-                                        player.pause();
-                                    }
-                                    _ => {}
                                 }
                             }
-                            _ => {}
                         }
                     }
                     _ => {}
-                }
-                if seek > 0.0 {
-                    player.seek(seek);
                 }
             }
         });
@@ -163,18 +212,8 @@ impl AppUi {
     }
 
     pub fn run_app() {
-        // let mut app = App::new();
-        // app
-        //     .add_plugins(AppUi::plugins())
-        //     .add_plugins(EguiPlugin)
-        //     .init_resource::<AppUi>()
-        //     .add_systems(Startup, AppUi::startup)
-        //     .add_systems(Update, AppUi::update);
-        // app.run();
-
         let re = eframe::run_native("Door Player", eframe::NativeOptions::default(),
-                                    Box::new(|_| Box::new(AppUi::default())),
-        );
+                                    Box::new(|_| Box::new(AppUi::default())), );
         if let Err(e) = re {
             log::error!("{}", e);
         }
@@ -202,7 +241,6 @@ impl AppUi {
 
 impl eframe::App for AppUi {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // ctx.request_repaint();
         // if cfg!(debug_assertions) {
         //     ctx.set_debug_on_hover(true);
         // } else {
@@ -244,6 +282,9 @@ impl eframe::App for AppUi {
                         if ui.button("Next file").clicked() {
                             file = AppUi::next_file(&self.media_path);
                         }
+                        if ui.button("ReOpen").clicked() {
+                            file = self.media_path.clone();
+                        }
                         if ui.button("Pre file").clicked() {
                             file = AppUi::pre_file(&self.media_path);
                         }
@@ -269,20 +310,10 @@ impl eframe::App for AppUi {
 
         egui::CentralPanel::default().frame(frame)
             .show(ctx, |ui| {
-                if let Some(player) = &mut self.player {
-                    let p = {
-                        if self.no_scale {
-                            egui::Vec2::new(player.width as f32, player.height as f32)
-                        } else {
-                            AppUi::compute_player_size(egui::Vec2::new(player.width as f32, player.height as f32),
-                                                       egui::Vec2::new(ui.min_rect().width(), ui.min_rect().height()))
-                        }
-                    };
-                    ui.centered_and_justified(|ui| {
-                        player.ui(ui, [p.x, p.y]);
-                    });
-
-                    AppUi::handle_key_player(ui, player);
+                if self.player.is_some() {
+                    self.handle_key_player(ui, ctx);
+                } else {
+                    self.handle_key_no_player(ui, ctx);
                 }
 
                 let rect = {

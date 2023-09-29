@@ -10,6 +10,7 @@ use egui::{self,
            TextureHandle, TextureOptions, Ui, vec2,
            Vec2,
 };
+use egui::load::SizedTexture;
 use ffmpeg::ChannelLayout;
 use ffmpeg::format::input;
 use ffmpeg::media::Type;
@@ -247,7 +248,7 @@ impl Player {
 
     /// Draw the player's ui and process state changes.
     pub fn ui(&mut self, ui: &mut Ui, size: [f32; 2]) -> Response {
-        let image = Image::new(self.texture_handle.id(), size).sense(Sense::click());
+        let image = Image::new(SizedTexture::new(self.texture_handle.id(), size)).sense(Sense::click());
         let response = ui.add(image);
         self.render_ui(ui, &response);
         self.process_state();
@@ -256,7 +257,7 @@ impl Player {
 
     /// Draw the player's ui with a specific rect, and process state changes.
     pub fn ui_at(&mut self, ui: &mut Ui, rect: Rect) -> Response {
-        let image = Image::new(self.texture_handle.id(), rect.size()).sense(Sense::click());
+        let image = Image::new(SizedTexture::new(self.texture_handle.id(), rect.size())).sense(Sense::click());
         let response = ui.put(rect, image);
         self.render_ui(ui, &response);
         self.process_state();
@@ -324,7 +325,7 @@ impl Player {
                     .linear_multiply(seek_indicator_anim);
                 let spinner_size = 20. * seek_indicator_anim;
                 ui.painter().add(
-                    seek_indicator_shadow.tessellate(playback_response.rect, Rounding::none()),
+                    seek_indicator_shadow.tessellate(playback_response.rect, Rounding::ZERO),
                 );
                 ui.put(
                     Rect::from_center_size(
@@ -397,7 +398,7 @@ impl Player {
 
             let mut shadow_rect = playback_response.rect;
             shadow_rect.set_top(shadow_rect.bottom() - seekbar_offset - 10.);
-            let shadow_mesh = shadow.tessellate(shadow_rect, Rounding::none());
+            let shadow_mesh = shadow.tessellate(shadow_rect, Rounding::ZERO);
 
             let full_seek_bar_color = Color32::GRAY.linear_multiply(seekbar_anim_frac);
             let seekbar_color = Color32::WHITE.linear_multiply(seekbar_anim_frac);
@@ -406,11 +407,11 @@ impl Player {
 
             ui.painter().rect_filled(
                 full_seek_bar_rect,
-                Rounding::none(),
+                Rounding::ZERO,
                 full_seek_bar_color.linear_multiply(0.5),
             );
             ui.painter()
-                .rect_filled(seekbar_rect, Rounding::none(), seekbar_color);
+                .rect_filled(seekbar_rect, Rounding::ZERO, seekbar_color);
             ui.painter().text(
                 pause_icon_pos,
                 Align2::LEFT_BOTTOM,
