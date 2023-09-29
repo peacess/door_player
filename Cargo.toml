@@ -2,6 +2,13 @@
 name = "door_player"
 version = "0.1.2"
 edition = "2021"
+authors = ["Andy <peacess@163.com>"]
+description = "rust tool kits"
+repository = "https://github.com/peacess/door_player"
+homepage = "https://github.com/peacess/door_player"
+keywords = ["rust", "player","egui","ffmpeg","cross"]
+categories = ["player"]
+license = "Apache-2.0"
 
 [dependencies]
 log = "0.4.20"
