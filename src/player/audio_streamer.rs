@@ -1,5 +1,5 @@
-use ffmpeg_the_third::frame::Audio;
-use ffmpeg_the_third::software;
+use ffmpeg::frame::Audio;
+use ffmpeg::software;
 
 use crate::{AudioSampleProducer, PlayerState, Streamer};
 use crate::kits::Shared;
@@ -10,10 +10,10 @@ pub struct AudioStreamer {
     pub(super) audio_elapsed_ms: Shared<i64>,
     pub(super) audio_stream_index: usize,
     pub(super) duration_ms: i64,
-    pub(super) audio_decoder: ffmpeg_the_third::decoder::Audio,
+    pub(super) audio_decoder: ffmpeg::decoder::Audio,
     pub(super) re_sampler: software::resampling::Context,
     pub(super) audio_sample_producer: AudioSampleProducer,
-    pub(super) input_context: ffmpeg_the_third::format::context::Input,
+    pub(super) input_context: ffmpeg::format::context::Input,
     pub(super) player_state: Shared<PlayerState>,
 }
 
@@ -32,10 +32,10 @@ impl Streamer for AudioStreamer {
     fn duration_ms(&mut self) -> i64 {
         self.duration_ms
     }
-    fn decoder(&mut self) -> &mut ffmpeg_the_third::decoder::Opened {
+    fn decoder(&mut self) -> &mut ffmpeg::decoder::Opened {
         &mut self.audio_decoder.0
     }
-    fn input_context(&mut self) -> &mut ffmpeg_the_third::format::context::Input {
+    fn input_context(&mut self) -> &mut ffmpeg::format::context::Input {
         &mut self.input_context
     }
     fn player_state(&self) -> &Shared<PlayerState> {
@@ -65,12 +65,12 @@ impl Streamer for AudioStreamer {
 #[inline]
 // Thanks https://github.com/zmwangx/rust-ffmpeg/issues/72 <3
 // Interpret the audio frame's data as packed (alternating channels, 12121212, as opposed to planar 11112222)
-fn packed<T: ffmpeg_the_third::frame::audio::Sample>(frame: &Audio) -> &[T] {
+fn packed<T: ffmpeg::frame::audio::Sample>(frame: &Audio) -> &[T] {
     if !frame.is_packed() {
         panic!("data is not packed");
     }
 
-    if !<T as ffmpeg_the_third::frame::audio::Sample>::is_valid(frame.format(), frame.channels()) {
+    if !<T as ffmpeg::frame::audio::Sample>::is_valid(frame.format(), frame.channels()) {
         panic!("unsupported type");
     }
 

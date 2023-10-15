@@ -802,7 +802,7 @@ dependencies = [
 
 [[package]]
 name = "door_player"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "atomic",
@@ -811,6 +811,7 @@ dependencies = [
  "eframe",
  "egui",
  "ffmpeg-the-third",
+ "kanal",
  "log",
  "parking_lot",
  "regex",
@@ -1506,6 +1507,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c5f195fe497f702db0f318b07fdd68edb16955aed830df8363d837542f8f935a"
 dependencies = [
  "wasm-bindgen",
+]
+
+[[package]]
+name = "kanal"
+version = "0.1.0-pre8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b05d55519627edaf7fd0f29981f6dc03fb52df3f5b257130eb8d0bf2801ea1d7"
+dependencies = [
+ "futures-core",
+ "lock_api",
 ]
 
 [[package]]

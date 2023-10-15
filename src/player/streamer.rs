@@ -1,4 +1,4 @@
-use ffmpeg_the_third::{Rational, rescale, Rescale};
+use ffmpeg::{Rational, rescale, Rescale};
 
 use crate::{is_ffmpeg_eof_error, MILLISEC_TIME_BASE, PlayerState};
 use crate::kits::Shared;
@@ -80,9 +80,9 @@ pub trait Streamer: Send {
     /// The total duration of the stream, in milliseconds.
     fn duration_ms(&mut self) -> i64;
     /// The streamer's decoder.
-    fn decoder(&mut self) -> &mut ffmpeg_the_third::decoder::Opened;
+    fn decoder(&mut self) -> &mut ffmpeg::decoder::Opened;
     /// The streamer's input context.
-    fn input_context(&mut self) -> &mut ffmpeg_the_third::format::context::Input;
+    fn input_context(&mut self) -> &mut ffmpeg::format::context::Input;
     /// The streamer's state.
     fn player_state(&self) -> &Shared<PlayerState>;
     /// Output a frame from the decoder.

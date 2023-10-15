@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use bytemuck::NoUninit;
 use egui::ColorImage;
-use ffmpeg_the_third::ffi::AV_TIME_BASE;
-use ffmpeg_the_third::Rational;
+use ffmpeg::ffi::AV_TIME_BASE;
+use ffmpeg::Rational;
 use ringbuf::SharedRb;
 use sdl2::audio::{self};
 
@@ -42,7 +42,7 @@ pub(super) type ApplyVideoFrameFn = Box<dyn FnMut(ColorImage) + Send>;
 
 pub fn is_ffmpeg_eof_error(error: &anyhow::Error) -> bool {
     matches!(
-        error.downcast_ref::<ffmpeg_the_third::Error>(),
-        Some(ffmpeg_the_third::Error::Eof)
+        error.downcast_ref::<ffmpeg::Error>(),
+        Some(ffmpeg::Error::Eof)
     )
 }
