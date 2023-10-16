@@ -13,3 +13,4 @@ mod player;
 mod audio_frame;
 mod video_frame;
 mod demux;
+mod play_control;

@@ -1,9 +1,8 @@
 use std::path;
-use ffmpeg::{media};
 
-pub struct Demux{
+use ffmpeg::media;
 
-}
+pub struct Demux {}
 
 impl Demux {
     pub fn open(

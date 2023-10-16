@@ -1,4 +1,3 @@
-
 #[derive(Default, Clone)]
 pub struct VideoFrame {
     pub data: Vec<u8>,

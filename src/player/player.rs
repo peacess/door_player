@@ -1,39 +1,201 @@
+use std::collections::VecDeque;
+use std::path;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+
+use ffmpeg::media;
 
 use crate::player::audio_frame::AudioFrame;
 use crate::player::video_frame::VideoFrame;
 
+type Deque<T> = Arc<parking_lot::Mutex<VecDeque<T>>>;
+
+fn new_deque<T>() -> Deque<T> {
+    Arc::new(parking_lot::Mutex::new(VecDeque::new()))
+}
 
 /// player base ffmpeg, there are 4 threads to player file.
-pub struct Player{
+pub struct Player {
     file_path: String,
-
-    audio_frame_receiver: Option<kanal::Receiver<AudioFrame>>,
-    video_frame_receiver: Option<kanal::Receiver<VideoFrame>>,
+    //是否需要停止播放相关线程
+    stopped: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Player {
-    pub fn new(file: &str) -> Player {
-        Self{
-            file_path: file.to_string(),
-            audio_frame_receiver: None,
-            video_frame_receiver: None,
-        }
-    }
-
-    pub fn play(&mut self) {
-
-        let (v_s,v_r) = kanal::bounded(10);
-        let (a_s, a_r) = kanal::bounded(10);
-        self.audio_frame_receiver = Some(a_r);
-        self.video_frame_receiver = Some(v_r);
+    //初始化所有线程，如果之前的还在，结束它们
+    pub fn new(file: &str) -> Result<Player, anyhow::Error> {
 
         //打开文件
-        //开启 视频解码线程
-        //开启 音频解码线程
-        //开启 音频播放线程
-        //开启 读frame线程
+        let format_input = ffmpeg::format::input(&path::Path::new(file))?;
 
-        //视频播放的计算在 ui线程中，这样计算的时间最准确。 意视频同步是以音频时间为准
+        // 获取视频解码器
+        let (video_index, video_decoder) = {
+            let video_stream = format_input.streams().best(media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
+            let video_index = video_stream.index();
+            let video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
+            let video_decoder = video_context.decoder().video()?;
+            (video_index, video_decoder)
+        };
+
+        // 获取音频解码器
+        let (audio_index, audio_decoder) = {
+            let audio_stream = format_input.streams().best(media::Type::Audio).ok_or(ffmpeg::Error::InvalidData)?;
+            let audio_index = audio_stream.index();
+            let audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
+            let audio_decoder = audio_context.decoder().audio()?;
+            (audio_index, audio_decoder)
+        };
+
+        let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(20);
+        let (video_packet_sender, video_packet_receiver) = kanal::bounded(20);
+
+        let audio_frame_deque = new_deque();
+        let video_frame_deque = new_deque();
+
+        let player = Self {
+            file_path: file.to_string(),
+            stopped: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        };
+
+        //开启 音频解码线程
+        player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_deque.clone());
+        //开启 音频播放线程
+        player.audio_play_run(audio_frame_deque);
+        //开启 视频解码线程
+        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_deque.clone());
+        //开启 视频播放
+        player.video_play_run(video_frame_deque);
+        //开启 读frame线程
+        player.read_packet_run(format_input, audio_packet_sender, audio_index,
+                               video_packet_sender, video_index);
+        Ok(player)
+    }
+
+    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: kanal::Receiver<ffmpeg::Packet>, audio_deque: Deque<AudioFrame>) {
+        let stopped = self.stopped.clone();
+        std::thread::spawn(move || {
+            loop {
+                if stopped.load(Ordering::Relaxed) {
+                    break;
+                }
+                match packet_receiver.recv() {
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                    Ok(packet) => {
+                        match audio_decoder.0.send_packet(&packet) {
+                            Err(e) => {
+                                log::error!("{}", e);
+                            }
+                            Ok(_) => {}
+                        }
+                    }
+                }
+                let mut f = unsafe { ffmpeg::frame::Frame::empty() };
+                match audio_decoder.receive_frame(&mut f) {
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                    Ok(_) => {
+                        // let frame = AudioFrame{
+                        //
+                        // };
+                        // audio_deque.lock().push_back(frame);
+                    }
+                }
+            }
+        });
+    }
+
+    fn audio_play_run(&self, frame_deque: Deque<AudioFrame>) {
+        let stopped = self.stopped.clone();
+        std::thread::spawn(move || {
+            loop {
+                if stopped.load(Ordering::Relaxed) {
+                    break;
+                }
+            }
+        });
+    }
+
+    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<ffmpeg::Packet>, video_deque: Deque<VideoFrame>) {
+        let stopped = self.stopped.clone();
+        std::thread::spawn(move || {
+            loop {
+                if stopped.load(Ordering::Relaxed) {
+                    break;
+                }
+                match packet_receiver.recv() {
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                    Ok(packet) => {
+                        match video_decoder.0.send_packet(&packet) {
+                            Err(e) => {
+                                log::error!("{}", e);
+                            }
+                            Ok(_) => {}
+                        }
+                    }
+                }
+                let mut frame = unsafe { ffmpeg::Frame::empty() };
+                match video_decoder.receive_frame(&mut frame) {
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                    Ok(_) => {
+                        // let video_frame = VideoFrame{};
+                        // video_deque.lock().push_back(video_frame);
+                    }
+                }
+            }
+        });
+    }
+
+    fn video_play_run(&self, frame_receiver: Deque<VideoFrame>) {
+        let stopped = self.stopped.clone();
+        std::thread::spawn(move || {
+            loop {
+                if stopped.load(Ordering::Relaxed) {
+                    break;
+                }
+            }
+        });
+    }
+
+    fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: kanal::Sender<ffmpeg::Packet>, audio_index: usize,
+                       video_deque: kanal::Sender<ffmpeg::Packet>, video_index: usize) {
+        let stopped = self.stopped.clone();
+        std::thread::spawn(move || {
+            loop {
+                if stopped.load(Ordering::Relaxed) {
+                    break;
+                }
+                for (s, packet) in input.packets() {
+                    unsafe {
+                        if !packet.is_empty() {
+                            if packet.stream() == audio_index {
+                                if let Err(e) = audio_deque.send(packet) {
+                                    log::error!("{}", e);
+                                }
+                            } else if packet.stream() == video_index {
+                                if let Err(e) = video_deque.send(packet) {
+                                    log::error!("{}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+}
+
+impl Drop for Player {
+    fn drop(&mut self) {
+        if self.stopped.load(std::sync::atomic::Ordering::Relaxed) {
+            self.stopped.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 }
 
