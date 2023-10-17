@@ -12,5 +12,5 @@ mod streamer;
 mod player;
 mod video;
 mod demux;
-mod play_control;
+mod play_ctrl;
 mod audio;

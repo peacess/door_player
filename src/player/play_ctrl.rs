@@ -10,6 +10,13 @@ use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::player::PlayFrame;
 use crate::player::video::VideoFrame;
 
+pub enum Command {
+    Terminate,
+    Pause(bool),
+    Mute(bool),
+    Volume(f32),
+}
+
 #[derive(Debug)]
 pub enum PlayState {
     Start,
@@ -102,13 +109,13 @@ impl Clock {
 }
 
 #[derive(Clone)]
-pub struct PlayControl {
+pub struct PlayCtrl {
     /// 用于和 ui 交互, 发布状态信息
     state_tx: Sender<PlayState>,
     /// 解码开始时间, 也是音视频的起始时间
     start: Instant,
     /// 取消请求, 在播放完成时, 会设置为true, 则 相关线程就会退出
-    abort_request: Arc<AtomicBool>,
+    abort_req: Arc<AtomicBool>,
     /// 暂停播放
     pause: Pause,
     /*
@@ -116,11 +123,8 @@ pub struct PlayControl {
     */
     /// 解封装(取包)完成
     demux_finished: Arc<AtomicBool>,
-    /*
-        视频
-    */
-    /// 视频包解码后得到的视频帧 格式转换后 采集到的RGB数据
-    video_frame_tx: Sender<VideoFrame>,
+    // /// 视频包解码后得到的视频帧 格式转换后 采集到的RGB数据
+    // video_frame_tx: Sender<VideoFrame>,
     /// 视频播放线程完成
     video_finished: Arc<AtomicBool>,
     /// 控制同步
@@ -132,20 +136,18 @@ pub struct PlayControl {
     audio_dev: Arc<RwLock<AudioDevice>>,
     /// 音频播放线程完成
     audio_finished: Arc<AtomicBool>,
-    /// 音频包解码后得到的音频帧转换成的 音频采样数据
-    audio_frame_tx: Sender<AudioFrame>,
+    // /// 音频包解码后得到的音频帧转换成的 音频采样数据
+    // audio_frame_tx: Sender<AudioFrame>,
     /// 音量控制
     volume: Arc<RwLock<f32>>,
     /// 控制同步
     audio_clock: Arc<RwLock<Clock>>,
 }
 
-impl PlayControl {
+impl PlayCtrl {
     pub fn new(
         audio_dev: Arc<RwLock<AudioDevice>>,
         state_tx: Sender<PlayState>,
-        audio_frame_tx: Sender<AudioFrame>,
-        video_frame_tx: Sender<VideoFrame>,
         abort_request: Arc<AtomicBool>,
     ) -> Self {
         let start = Instant::now();
@@ -157,14 +159,12 @@ impl PlayControl {
         Self {
             state_tx,
             start,
-            abort_request,
+            abort_req: abort_request,
             pause: Pause::default(),
             demux_finished,
             video_finished,
-            video_frame_tx,
             video_clock,
             audio_dev,
-            audio_frame_tx,
             audio_finished,
             audio_clock,
             volume: Arc::new(RwLock::new(1.0)),
@@ -187,14 +187,14 @@ impl PlayControl {
     }
 
     /// 设置是否取消播放
-    pub fn set_abort_request(&self, abort_request: bool) {
-        self.abort_request.store(abort_request, Ordering::Relaxed);
+    pub fn set_abort_req(&self, abort_req: bool) {
+        self.abort_req.store(abort_req, Ordering::Relaxed);
         self.audio_dev.write().stop();
     }
 
     /// 是否取消播放
-    pub fn abort_request(&self) -> bool {
-        self.abort_request.load(Ordering::Relaxed)
+    pub fn abort_req(&self) -> bool {
+        self.abort_req.load(Ordering::Relaxed)
     }
 
     /// 设置是否暂停播放
@@ -249,15 +249,15 @@ impl PlayControl {
         self.audio_dev.read().default_config()
     }
 
-    /// 发送音频帧
-    pub fn send_audio(&self, audio: AudioFrame) -> core::result::Result<(), SendError> {
-        self.audio_frame_tx.send(audio)
-    }
+    // /// 发送音频帧
+    // pub fn send_audio(&self, audio: AudioFrame) -> core::result::Result<(), SendError> {
+    //     self.audio_frame_tx.send(audio)
+    // }
 
-    /// 发送视频帧
-    pub fn send_video(&self, video: VideoFrame) -> core::result::Result<(), SendError> {
-        self.video_frame_tx.send(video)
-    }
+    // /// 发送视频帧
+    // pub fn send_video(&self, video: VideoFrame) -> core::result::Result<(), SendError> {
+    //     self.video_frame_tx.send(video)
+    // }
 
     /// 发送播放状态
     pub fn send_state(
