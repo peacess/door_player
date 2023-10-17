@@ -5,13 +5,22 @@ use std::sync::atomic::Ordering;
 
 use ffmpeg::media;
 
-use crate::player::audio_frame::AudioFrame;
-use crate::player::video_frame::VideoFrame;
-
 type Deque<T> = Arc<parking_lot::Mutex<VecDeque<T>>>;
 
 fn new_deque<T>() -> Deque<T> {
     Arc::new(parking_lot::Mutex::new(VecDeque::new()))
+}
+
+pub trait PlayFrame: std::fmt::Debug {
+    fn pts(&self) -> f64 {
+        0.0
+    }
+    fn duration(&self) -> f64 {
+        0.0
+    }
+    fn mem_size(&self) -> usize {
+        0
+    }
 }
 
 /// player base ffmpeg, there are 4 threads to player file.
@@ -71,7 +80,7 @@ impl Player {
         Ok(player)
     }
 
-    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: kanal::Receiver<ffmpeg::Packet>, audio_deque: Deque<AudioFrame>) {
+    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: kanal::Receiver<ffmpeg::Packet>, audio_deque: Deque<ffmpeg::Frame>) {
         let stopped = self.stopped.clone();
         std::thread::spawn(move || {
             loop {
@@ -91,23 +100,20 @@ impl Player {
                         }
                     }
                 }
-                let mut f = unsafe { ffmpeg::frame::Frame::empty() };
-                match audio_decoder.receive_frame(&mut f) {
+                let mut frame = unsafe { ffmpeg::Frame::empty() };
+                match audio_decoder.receive_frame(&mut frame) {
                     Err(e) => {
                         log::error!("{}", e);
                     }
                     Ok(_) => {
-                        // let frame = AudioFrame{
-                        //
-                        // };
-                        // audio_deque.lock().push_back(frame);
+                        audio_deque.lock().push_back(frame);
                     }
                 }
             }
         });
     }
 
-    fn audio_play_run(&self, frame_deque: Deque<AudioFrame>) {
+    fn audio_play_run(&self, frame_deque: Deque<ffmpeg::Frame>) {
         let stopped = self.stopped.clone();
         std::thread::spawn(move || {
             loop {
@@ -118,7 +124,7 @@ impl Player {
         });
     }
 
-    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<ffmpeg::Packet>, video_deque: Deque<VideoFrame>) {
+    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<ffmpeg::Packet>, video_deque: Deque<ffmpeg::Frame>) {
         let stopped = self.stopped.clone();
         std::thread::spawn(move || {
             loop {
@@ -145,20 +151,22 @@ impl Player {
                     }
                     Ok(_) => {
                         // let video_frame = VideoFrame{};
-                        // video_deque.lock().push_back(video_frame);
+                        video_deque.lock().push_back(frame);
                     }
                 }
             }
         });
     }
 
-    fn video_play_run(&self, frame_receiver: Deque<VideoFrame>) {
+    fn video_play_run(&self, mut frame_deque: Deque<ffmpeg::Frame>) {
         let stopped = self.stopped.clone();
         std::thread::spawn(move || {
             loop {
                 if stopped.load(Ordering::Relaxed) {
                     break;
                 }
+                let frame = frame_deque.lock().pop_front();
+                if let Some(frame) = frame {}
             }
         });
     }

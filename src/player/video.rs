@@ -1,4 +1,8 @@
-#[derive(Default, Clone)]
+use std::fmt::Debug;
+
+use crate::player::player::PlayFrame;
+
+#[derive(Debug, Default, Clone)]
 pub struct VideoFrame {
     pub data: Vec<u8>,
     pub width: usize,
@@ -35,5 +39,19 @@ impl VideoFrame {
             pts,
             duration,
         }
+    }
+}
+
+impl PlayFrame for VideoFrame {
+    fn pts(&self) -> f64 {
+        self.pts
+    }
+
+    fn duration(&self) -> f64 {
+        self.duration
+    }
+
+    fn mem_size(&self) -> usize {
+        self.data.len()
     }
 }
