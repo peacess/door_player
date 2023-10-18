@@ -1,39 +1,37 @@
-use std::fmt::Debug;
+use std::fmt::{Debug, Formatter};
 
 use crate::player::player::PlayFrame;
 
-#[derive(Debug, Default, Clone)]
+#[derive(Default, Clone)]
 pub struct VideoFrame {
-    pub data: Vec<u8>,
     pub width: usize,
     pub height: usize,
     pub pts: f64,
     pub duration: f64,
+    pub color_image: egui::ColorImage,
+}
+
+impl Debug for VideoFrame {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        //todo
+        f.debug_struct("VideoFrame")
+            // .field("color_image", &self.color_image)
+            .field("pts", &self.pts)
+            .field("duration", &self.duration)
+            .finish()
+    }
 }
 
 impl VideoFrame {
     pub fn new(
-        raw_data: *const u8,
+        color_image: egui::ColorImage,
         width: usize,
         height: usize,
-        line_size: usize,
         pts: f64,
         duration: f64,
     ) -> Self {
-        let raw_data = unsafe { std::slice::from_raw_parts(raw_data, height * line_size) };
-        let mut data: Vec<u8> = vec![0; width * height * 4];
-        let data_slice = data.as_mut_slice();
-        for i in 0..height as usize {
-            let start = i * width * 4;
-            let end = start + width * 4;
-            let slice = &mut data_slice[start..end];
-
-            let start = i * line_size;
-            let end = start + width * 4;
-            slice.copy_from_slice(&raw_data[start..end]);
-        }
         Self {
-            data,
+            color_image,
             width,
             height,
             pts,
@@ -52,6 +50,7 @@ impl PlayFrame for VideoFrame {
     }
 
     fn mem_size(&self) -> usize {
-        self.data.len()
+        //todo
+        self.color_image.pixels.len()
     }
 }

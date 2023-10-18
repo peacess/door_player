@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use eframe::epaint::TextureHandle;
 use kanal::{Sender, SendError};
 use parking_lot::{Condvar, Mutex, RwLock};
 
@@ -142,6 +143,9 @@ pub struct PlayCtrl {
     volume: Arc<RwLock<f32>>,
     /// 控制同步
     audio_clock: Arc<RwLock<Clock>>,
+
+    /// The player's texture handle.
+    pub texture_handle: egui::TextureHandle,
 }
 
 impl PlayCtrl {
@@ -149,6 +153,7 @@ impl PlayCtrl {
         audio_dev: Arc<RwLock<AudioDevice>>,
         state_tx: Sender<PlayState>,
         abort_request: Arc<AtomicBool>,
+        texture_handle: TextureHandle,
     ) -> Self {
         let start = Instant::now();
         let demux_finished = Arc::new(AtomicBool::new(false));
@@ -156,6 +161,7 @@ impl PlayCtrl {
         let video_finished = Arc::new(AtomicBool::new(false));
         let video_clock = Arc::new(RwLock::new(Clock::new(start.clone())));
         let audio_clock = Arc::new(RwLock::new(Clock::new(start.clone())));
+
         Self {
             state_tx,
             start,
@@ -168,6 +174,7 @@ impl PlayCtrl {
             audio_finished,
             audio_clock,
             volume: Arc::new(RwLock::new(1.0)),
+            texture_handle,
         }
     }
 
@@ -279,16 +286,18 @@ impl PlayCtrl {
     }
 
     /// 播放视频帧
-    pub fn play_video(&self, frame: VideoFrame) -> Result<(), anyhow::Error> {
+    pub fn play_video(&mut self, frame: VideoFrame) -> Result<(), anyhow::Error> {
         // 更新视频时钟
         let delay = self.update_video_clock(frame.pts(), frame.duration());
+
         // 播放
-        match self.send_state(PlayState::Video(frame)) {
-            Ok(_) => {}
-            Err(SendError::Closed) | Err(SendError::ReceiveClosed) => {
-                return Err(anyhow::Error::msg("play channel disconnected"));
-            }
-        }
+        self.texture_handle.set(frame.color_image, egui::TextureOptions::LINEAR);
+        // match self.send_state(PlayState::Video(frame)) {
+        //     Ok(_) => {}
+        //     Err(SendError::Closed) | Err(SendError::ReceiveClosed) => {
+        //         return Err(anyhow::Error::msg("play channel disconnected"));
+        //     }
+        // }
         // 休眠
         spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())

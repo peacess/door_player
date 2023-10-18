@@ -2,7 +2,7 @@ use std::path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ffmpeg::media;
+use ffmpeg::Rational;
 use kanal::Receiver;
 use parking_lot::RwLock;
 
@@ -10,6 +10,7 @@ use crate::kits::{Deque, new_deque};
 use crate::kits::consts::PLAY_MIN_INTERVAL;
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::play_ctrl::{Command, PlayCtrl, PlayState};
+use crate::player::video::VideoFrame;
 
 // use ffmpeg::format::Sample;
 
@@ -31,11 +32,14 @@ pub struct Player {
     //是否需要停止播放相关线程
     play_ctrl: PlayCtrl,
     cmd_sender: kanal::Sender<Command>,
+
+    width: u32,
+    height: u32,
 }
 
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
-    pub fn new(file: &str) -> Result<Player, anyhow::Error> {
+    pub fn new(file: &str, texture_handle: egui::TextureHandle) -> Result<Player, anyhow::Error> {
         let (cmd_sender, cmd_receiver) = kanal::bounded::<Command>(2);
         let (state_sender, state_receiver) = kanal::bounded::<PlayState>(1);
         let abort_req = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -48,28 +52,32 @@ impl Player {
                 .unwrap();
             let audio_dev = Arc::new(RwLock::new(audio_dev));
 
-            PlayCtrl::new(audio_dev, state_sender, abort_req)
+            PlayCtrl::new(audio_dev, state_sender, abort_req, texture_handle)
         };
-        let player = Self {
+        let mut player = Self {
             file_path: file.to_string(),
             play_ctrl,
             cmd_sender,
+            width: 0,
+            height: 0,
         };
         //打开文件
         let format_input = ffmpeg::format::input(&path::Path::new(file))?;
 
         // 获取视频解码器
         let (video_index, video_decoder) = {
-            let video_stream = format_input.streams().best(media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
+            let video_stream = format_input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
             let video_index = video_stream.index();
             let video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
             let video_decoder = video_context.decoder().video()?;
+            player.width = video_decoder.width();
+            player.height = video_decoder.height();
             (video_index, video_decoder)
         };
 
         // 获取音频解码器
         let (audio_index, audio_decoder) = {
-            let audio_stream = format_input.streams().best(media::Type::Audio).ok_or(ffmpeg::Error::InvalidData)?;
+            let audio_stream = format_input.streams().best(ffmpeg::media::Type::Audio).ok_or(ffmpeg::Error::InvalidData)?;
             let audio_index = audio_stream.index();
             let audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
             let audio_decoder = audio_context.decoder().audio()?;
@@ -82,18 +90,61 @@ impl Player {
         let audio_frame_deque = new_deque();
         let video_frame_deque = new_deque();
 
+        let video_time_base = format_input.stream(video_index).expect("").time_base();
+        // .ok_or_else(|| PlayerError::Error(format!("根据 stream_idx 无法获取到 stream")))?
+        // .time_base;
+
         //开启 音频解码线程
         player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_deque.clone());
         //开启 音频播放线程
         player.audio_play_run(audio_frame_deque);
         //开启 视频解码线程
-        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_deque.clone());
+        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_deque.clone(), video_time_base);
         //开启 视频播放
         player.video_play_run(video_frame_deque);
         //开启 读frame线程
         player.read_packet_run(format_input, audio_packet_sender, audio_index,
                                video_packet_sender, video_index, cmd_receiver);
         Ok(player)
+    }
+
+    pub fn default_texture_handle(ctx: &egui::Context) -> egui::TextureHandle {
+        let texture_options = egui::TextureOptions::LINEAR;
+        let texture_handle = ctx.load_texture("video_stream_default", egui::ColorImage::example(), texture_options);
+        texture_handle
+    }
+
+    pub fn frame_to_color_image(frame: &ffmpeg::util::frame::Video) -> Result<egui::ColorImage, ffmpeg::Error> {
+        let mut rgb_frame = ffmpeg::util::frame::Video::empty();
+        let mut context = ffmpeg::software::scaling::Context::get(
+            frame.format(),
+            frame.width(),
+            frame.height() as u32,
+            ffmpeg::format::Pixel::RGB24,
+            frame.width(),
+            frame.height() as u32,
+            ffmpeg::software::scaling::Flags::BILINEAR,
+        )?;
+        context.run(frame, &mut rgb_frame)?;
+
+        let size = [rgb_frame.width() as usize, rgb_frame.height() as usize];
+        let data = rgb_frame.data(0);
+        let stride = rgb_frame.stride(0);
+        let pixel_size_bytes = 3;
+        let byte_width: usize = pixel_size_bytes * rgb_frame.width() as usize;
+        let height: usize = rgb_frame.height() as usize;
+        let mut pixels = vec![];
+        for line in 0..height {
+            let begin = line * stride;
+            let end = begin + byte_width;
+            let data_line = &data[begin..end];
+            pixels.extend(
+                data_line
+                    .chunks_exact(pixel_size_bytes)
+                    .map(|p| egui::Color32::from_rgb(p[0], p[1], p[2])),
+            )
+        }
+        Ok(egui::ColorImage { size, pixels })
     }
 
     fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: kanal::Receiver<ffmpeg::Packet>, audio_deque: Deque<AudioFrame>) {
@@ -225,12 +276,41 @@ impl Player {
         });
     }
 
-    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<ffmpeg::Packet>, video_deque: Deque<ffmpeg::Frame>) {
+    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<ffmpeg::Packet>, video_deque: Deque<VideoFrame>, video_time_base: Rational) {
         let play_ctrl = self.play_ctrl.clone();
+        let width = video_decoder.width() as usize;
+        let height = video_decoder.height() as usize;
+        let duration = 1.0 / f64::from(video_decoder.frame_rate().expect(""));
+        // let duration = 1.0 / av_q2d(video_decoder..framerate);
+
         std::thread::spawn(move || {
             loop {
                 if play_ctrl.abort_req() {
                     break;
+                }
+                let mut frame = unsafe { ffmpeg::util::frame::Video::empty() };
+                match video_decoder.receive_frame(&mut frame) {
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                    Ok(_) => {
+                        let color_image = match Self::frame_to_color_image(&frame) {
+                            Err(e) => {
+                                log::error!("{}", e);
+                                continue;
+                            }
+                            Ok(t) => t,
+                        };
+                        let pts = frame.pts().unwrap_or_default() as f64;
+                        let video_frame = VideoFrame {
+                            width,
+                            height,
+                            pts,
+                            duration,
+                            color_image,
+                        };
+                        video_deque.lock().push_back(video_frame);
+                    }
                 }
                 match packet_receiver.recv() {
                     Err(e) => {
@@ -245,30 +325,33 @@ impl Player {
                         }
                     }
                 }
-                let mut frame = unsafe { ffmpeg::Frame::empty() };
-                match video_decoder.receive_frame(&mut frame) {
-                    Err(e) => {
-                        log::error!("{}", e);
-                    }
-                    Ok(_) => {
-                        // let video_frame = VideoFrame{};
-                        video_deque.lock().push_back(frame);
-                    }
-                }
             }
         });
     }
 
-    fn video_play_run(&self, mut frame_deque: Deque<ffmpeg::Frame>) {
-        let play_ctrl = self.play_ctrl.clone();
+    fn video_play_run(&self, mut frame_deque: Deque<VideoFrame>) {
+        let mut play_ctrl = self.play_ctrl.clone();
         std::thread::spawn(move || {
+            let mut empty_count = 0;
             loop {
                 if play_ctrl.abort_req() {
                     break;
                 }
-                let frame = frame_deque.lock().pop_front();
-                if let Some(frame) = frame {}
+                if let Some(frame) = frame_deque.lock().pop_front() {
+                    play_ctrl.play_video(frame)?;
+                    empty_count = 0;
+                    continue;
+                }
+
+                empty_count += 1;
+                if empty_count == 10 {
+                    play_ctrl.set_video_finished(true);
+                    break;
+                }
+                spin_sleep::sleep(PLAY_MIN_INTERVAL);
             }
+
+            Ok::<(), anyhow::Error>(())
         });
     }
 
