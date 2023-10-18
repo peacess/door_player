@@ -5,6 +5,7 @@ use std::time::Duration;
 use egui::{Image, Response, Sense, Ui};
 use egui::load::SizedTexture;
 use ffmpeg::Rational;
+use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 use parking_lot::RwLock;
 
@@ -161,14 +162,14 @@ impl Player {
     fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: Receiver<ffmpeg::Packet>, audio_deque: Sender<AudioFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let mut audio_re_sampler = {
-            let conf = play_ctrl.audio_default_config();
-            match ffmpeg::software::resampling::context::Context::get(
+            let stream_config = play_ctrl.audio_default_config();
+            match ResamplingContext::get(
                 audio_decoder.format(),
                 audio_decoder.channel_layout(),
                 audio_decoder.rate(),
-                to_sample(conf.sample_format()),
-                ffmpeg::ChannelLayout::STEREO,
-                conf.sample_rate().0,
+                to_sample(stream_config.sample_format()),
+                audio_decoder.channel_layout(),
+                stream_config.sample_rate().0
             ) {
                 Err(e) => {
                     log::error!("{}", e);

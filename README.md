@@ -10,6 +10,8 @@ dependencies: egui, ffmpeg
 # see
 [egui-video(player)](https://github.com/n00kii/egui-video)   First version of door player is base on this project   
 [small-player](https://github.com/imxood/small-player)   
+[ffmpeg-cpal-play-audio](https://github.com/dceddia/ffmpeg-cpal-play-audio/blob/main/src/main.rs#L53)  
+[stainless-ffmpeg](https://github.com/nomalab/stainless-ffmpeg/blob/master/examples/play.rs)  
 [ffplay源码分析](https://www.cnblogs.com/leisure_chn/p/10301215.html)  
 [ffplay源码分析4-音视频同步](https://www.cnblogs.com/leisure_chn/p/10307089.html)  
 [ffplay](https://ffmpeg.org/ffplay.html)  

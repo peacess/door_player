@@ -97,7 +97,7 @@ impl AudioDevice {
     pub fn new() -> Result<Self, anyhow::Error> {
         let default_device = cpal::default_host().default_output_device().ok_or(ffmpeg::Error::OptionNotFound)?;
 
-        let default_config = default_device.default_output_config()?;
+        let default_config = default_device.default_input_config()?;
 
         let default_stream = OutputStream::try_from_device(&default_device);
 
