@@ -42,16 +42,16 @@ impl AppUi {
                         Event::Key { key, pressed: true, .. } => {
                             match *key {
                                 Key::ArrowLeft => {
-                                    let mut v = player.video_streamer.lock();
-                                    let els = v.elapsed_ms().get() as f32 - 1.0;
-                                    if els > 0.0 {
-                                        seek = els / v.duration_ms() as f32;
-                                    }
+                                    // let mut v = player.video_streamer.lock();
+                                    // let els = v.elapsed_ms().get() as f32 - 1.0;
+                                    // if els > 0.0 {
+                                    //     seek = els / v.duration_ms() as f32;
+                                    // }
                                 }
                                 Key::ArrowRight => {
-                                    let mut v = player.video_streamer.lock();
-                                    let els = v.elapsed_ms().get() as f32 + 1.0;
-                                    seek = els / v.duration_ms() as f32;
+                                    // let mut v = player.video_streamer.lock();
+                                    // let els = v.elapsed_ms().get() as f32 + 1.0;
+                                    // seek = els / v.duration_ms() as f32;
                                 }
                                 Key::ArrowUp => {}
                                 Key::ArrowDown => {}
@@ -62,7 +62,7 @@ impl AppUi {
                                             player.start();
                                         }
                                         PlayerState::Paused => {
-                                            player.resume();
+                                            // player.resume();
                                         }
                                         PlayerState::Playing => {
                                             player.pause();
@@ -76,7 +76,7 @@ impl AppUi {
                         _ => {}
                     }
                     if seek > 0.0 {
-                        player.seek(seek);
+                        // player.seek(seek);
                     }
                 }
             });
@@ -97,7 +97,7 @@ impl AppUi {
                             if !self.media_path.is_empty() {
                                 let f = self.media_path.clone();
                                 // self.media_path = "".to_owned();
-                                match Player::new(ctx, &f.replace("\"", "")).and_then(|p| p.with_audio(&mut self.audio_device.as_mut().unwrap())) {
+                                match Player::new(ctx, &f) {
                                     Ok(p) => {
                                         self.player = Some(p);
                                     }
@@ -259,7 +259,7 @@ impl eframe::App for AppUi {
                             if !self.media_path.is_empty() {
                                 let f = self.media_path.clone();
                                 // self.media_path = "".to_owned();
-                                match Player::new(ctx, &f.replace("\"", "")).and_then(|p| p.with_audio(&mut self.audio_device.as_mut().unwrap())) {
+                                match Player::new(ctx, &f) {
                                     Ok(p) => {
                                         self.player = Some(p);
                                     }
@@ -292,7 +292,7 @@ impl eframe::App for AppUi {
                         if !file.is_empty() {
                             self.media_path = file;
                             let f = self.media_path.clone();
-                            match Player::new(ctx, &f.replace("\"", "")).and_then(|p| p.with_audio(&mut self.audio_device.as_mut().unwrap())) {
+                            match Player::new(ctx, &f.replace("\"", "")) {
                                 Ok(p) => {
                                     self.player = Some(p);
                                 }

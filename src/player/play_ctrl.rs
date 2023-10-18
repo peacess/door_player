@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use eframe::epaint::TextureHandle;
-use kanal::{Sender, SendError};
+use kanal::Sender;
 use parking_lot::{Condvar, Mutex, RwLock};
 
 use crate::kits::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
@@ -254,24 +254,6 @@ impl PlayCtrl {
     /// 获取声音设备的默认配置
     pub fn audio_default_config(&self) -> cpal::SupportedStreamConfig {
         self.audio_dev.read().default_config()
-    }
-
-    // /// 发送音频帧
-    // pub fn send_audio(&self, audio: AudioFrame) -> core::result::Result<(), SendError> {
-    //     self.audio_frame_tx.send(audio)
-    // }
-
-    // /// 发送视频帧
-    // pub fn send_video(&self, video: VideoFrame) -> core::result::Result<(), SendError> {
-    //     self.video_frame_tx.send(video)
-    // }
-
-    /// 发送播放状态
-    pub fn send_state(
-        &self,
-        state: PlayState,
-    ) -> Result<bool, SendError> {
-        self.state_tx.try_send(state)
     }
 
     /// 播放音频帧

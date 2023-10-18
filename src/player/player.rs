@@ -2,15 +2,18 @@ use std::path;
 use std::sync::Arc;
 use std::time::Duration;
 
+use egui::{Image, Response, Sense, Ui};
+use egui::load::SizedTexture;
 use ffmpeg::Rational;
-use kanal::Receiver;
+use kanal::{Receiver, Sender};
 use parking_lot::RwLock;
 
-use crate::kits::{Deque, new_deque};
-use crate::kits::consts::PLAY_MIN_INTERVAL;
+use crate::kits::consts::{AUDIO_FRAME_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE};
+use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::play_ctrl::{Command, PlayCtrl, PlayState};
 use crate::player::video::VideoFrame;
+use crate::PlayerState;
 
 // use ffmpeg::format::Sample;
 
@@ -30,16 +33,19 @@ pub trait PlayFrame: std::fmt::Debug {
 pub struct Player {
     file_path: String,
     //是否需要停止播放相关线程
-    play_ctrl: PlayCtrl,
+    pub play_ctrl: PlayCtrl,
+    pub player_state: Shared<PlayerState>,
     cmd_sender: kanal::Sender<Command>,
 
-    width: u32,
-    height: u32,
+    ctx_ref: egui::Context,
+
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
-    pub fn new(file: &str, texture_handle: egui::TextureHandle) -> Result<Player, anyhow::Error> {
+    pub fn new(ctx:&egui::Context, file: &str) -> Result<Player, anyhow::Error> {
         let (cmd_sender, cmd_receiver) = kanal::bounded::<Command>(2);
         let (state_sender, state_receiver) = kanal::bounded::<PlayState>(1);
         let abort_req = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -52,11 +58,13 @@ impl Player {
                 .unwrap();
             let audio_dev = Arc::new(RwLock::new(audio_dev));
 
-            PlayCtrl::new(audio_dev, state_sender, abort_req, texture_handle)
+            PlayCtrl::new(audio_dev, state_sender, abort_req, Self::default_texture_handle(ctx))
         };
         let mut player = Self {
+            ctx_ref: ctx.clone(),
             file_path: file.to_string(),
             play_ctrl,
+            player_state: Shared::new(PlayerState::Stopped),
             cmd_sender,
             width: 0,
             height: 0,
@@ -87,21 +95,24 @@ impl Player {
         let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(20);
         let (video_packet_sender, video_packet_receiver) = kanal::bounded(20);
 
-        let audio_frame_deque = new_deque();
-        let video_frame_deque = new_deque();
+        let (audio_frame_tx, audio_frame_rx) = kanal::bounded::<AudioFrame>(AUDIO_FRAME_QUEUE_SIZE);
+        let (video_frame_tx, video_frame_rx) = kanal::bounded::<VideoFrame>(VIDEO_FRAME_QUEUE_SIZE);
+        //
+        // let audio_frame_deque = new_deque();
+        // let video_frame_deque = new_deque();
 
         let video_time_base = format_input.stream(video_index).expect("").time_base();
         // .ok_or_else(|| PlayerError::Error(format!("根据 stream_idx 无法获取到 stream")))?
         // .time_base;
 
         //开启 音频解码线程
-        player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_deque.clone());
+        player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_tx);
         //开启 音频播放线程
-        player.audio_play_run(audio_frame_deque);
+        player.audio_play_run(audio_frame_rx);
         //开启 视频解码线程
-        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_deque.clone(), video_time_base);
+        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_tx, video_time_base);
         //开启 视频播放
-        player.video_play_run(video_frame_deque);
+        player.video_play_run(video_frame_rx);
         //开启 读frame线程
         player.read_packet_run(format_input, audio_packet_sender, audio_index,
                                video_packet_sender, video_index, cmd_receiver);
@@ -147,7 +158,7 @@ impl Player {
         Ok(egui::ColorImage { size, pixels })
     }
 
-    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: kanal::Receiver<ffmpeg::Packet>, audio_deque: Deque<AudioFrame>) {
+    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: Receiver<ffmpeg::Packet>, audio_deque: Sender<AudioFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let mut audio_re_sampler = {
             let conf = play_ctrl.audio_default_config();
@@ -207,7 +218,12 @@ impl Player {
                                 pts,
                                 duration,
                             };
-                            audio_deque.lock().push_back(audio_frame);
+                            match audio_deque.send(audio_frame) {
+                                Err(e) => {
+                                    log::error!("{}", e);
+                                }
+                                Ok(_) =>{}
+                            }
                         }
                         Err(e) => {
                             log::info!("{}", e);
@@ -240,7 +256,7 @@ impl Player {
         });
     }
 
-    fn audio_play_run(&self, frame_deque: Deque<AudioFrame>) {
+    fn audio_play_run(&self, frame_deque: Receiver<AudioFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         std::thread::spawn(move || {
             let mut empty_count = 0;
@@ -252,8 +268,12 @@ impl Player {
                     play_ctrl.wait_notify_in_pause();
                 }
 
-                match frame_deque.lock().pop_front() {
-                    Some(frame) => {
+                match frame_deque.try_recv() {
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                    Ok(None) => {}
+                    Ok(Some(frame)) => {
                         match play_ctrl.play_audio(frame) {
                             Err(e) => {
                                 log::error!("{}", e);
@@ -263,7 +283,6 @@ impl Player {
                         empty_count = 0;
                         continue;
                     }
-                    None => {}
                 }
 
                 empty_count += 1;
@@ -276,11 +295,11 @@ impl Player {
         });
     }
 
-    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<ffmpeg::Packet>, video_deque: Deque<VideoFrame>, video_time_base: Rational) {
+    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<ffmpeg::Packet>, video_deque: Sender<VideoFrame>, video_time_base: Rational) {
         let play_ctrl = self.play_ctrl.clone();
         let width = video_decoder.width() as usize;
         let height = video_decoder.height() as usize;
-        let duration = 1.0 / f64::from(video_decoder.frame_rate().expect(""));
+
         // let duration = 1.0 / av_q2d(video_decoder..framerate);
 
         std::thread::spawn(move || {
@@ -302,6 +321,19 @@ impl Player {
                             Ok(t) => t,
                         };
                         let pts = frame.pts().unwrap_or_default() as f64;
+
+                        let duration = {
+                            match video_decoder.frame_rate() {
+                                None => {
+                                    log::error!("the frame_rate is null");
+                                    return;
+                                }
+                                Some(t) =>{
+                                    1.0/ f64::from(t)
+                                }
+                            }
+                        };
+
                         let video_frame = VideoFrame {
                             width,
                             height,
@@ -309,7 +341,12 @@ impl Player {
                             duration,
                             color_image,
                         };
-                        video_deque.lock().push_back(video_frame);
+                        match video_deque.send(video_frame){
+                            Err(e) => {
+                                log::error!("{}", e);
+                            }
+                            Ok(_) =>{}
+                        }
                     }
                 }
                 match packet_receiver.recv() {
@@ -329,7 +366,7 @@ impl Player {
         });
     }
 
-    fn video_play_run(&self, mut frame_deque: Deque<VideoFrame>) {
+    fn video_play_run(&self, mut frame_deque: Receiver<VideoFrame>) {
         let mut play_ctrl = self.play_ctrl.clone();
         std::thread::spawn(move || {
             let mut empty_count = 0;
@@ -337,10 +374,16 @@ impl Player {
                 if play_ctrl.abort_req() {
                     break;
                 }
-                if let Some(frame) = frame_deque.lock().pop_front() {
-                    play_ctrl.play_video(frame)?;
-                    empty_count = 0;
-                    continue;
+                match frame_deque.try_recv(){
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                    Ok(None) => {}
+                    Ok(Some(frame)) =>{
+                        play_ctrl.play_video(frame)?;
+                        empty_count = 0;
+                        continue;
+                    }
                 }
 
                 empty_count += 1;
@@ -419,6 +462,24 @@ impl Player {
                 spin_sleep::sleep(Duration::from_millis(20));
             }
         });
+    }
+}
+
+impl Player {
+    pub fn ui(&mut self, ui: &mut Ui, size: [f32; 2]) -> Response {
+        let image = Image::new(SizedTexture::new(self.play_ctrl.texture_handle.id(), size)).sense(Sense::click());
+        let response = ui.add(image);
+        // self.render_ui(ui, &response);
+        // self.process_state();
+        response
+    }
+
+    pub fn start(&self){
+
+    }
+
+    pub fn pause(&self){
+
     }
 }
 

@@ -1,5 +1,6 @@
 pub use audio_streamer::*;
 pub use const_v::*;
+pub use player::*;
 pub use player_::*;
 pub(super) use streamer::*;
 pub use video_streamer::*;

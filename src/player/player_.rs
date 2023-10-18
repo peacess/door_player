@@ -31,12 +31,12 @@ fn format_duration(dur: Duration) -> String {
 }
 
 
-/// The [`Player`] processes and controls streams of video/audio. This is what you use to show a video file.
-/// Initialize once, and use the [`Player::ui`] or [`Player::ui_at()`] functions to show the playback.
-pub struct Player {
+/// The [`Player_`] processes and controls streams of video/audio. This is what you use to show a video file.
+/// Initialize once, and use the [`Player_::ui`] or [`Player_::ui_at()`] functions to show the playback.
+pub struct Player_ {
     /// The video streamer of the player.
     pub video_streamer: Arc<Mutex<VideoStreamer>>,
-    /// The audio streamer of the player. Won't exist unless [`Player::with_audio`] is called and there exists
+    /// The audio streamer of the player. Won't exist unless [`Player_::with_audio`] is called and there exists
     /// a valid audio stream in the file.
     pub audio_streamer: Option<Arc<Mutex<AudioStreamer>>>,
     /// The state of the player.
@@ -73,7 +73,7 @@ pub struct Player {
 }
 
 
-impl Player {
+impl Player_ {
     /// A formatted string for displaying the duration of the video stream.
     pub fn duration_text(&mut self) -> String {
         format!(
@@ -114,7 +114,7 @@ impl Player {
         self.set_state(PlayerState::Stopped)
     }
     /// Directly stop the stream. Use if you need to immediately end the streams, and/or you
-    /// aren't able to call the player's [`Player::ui`]/[`Player::ui_at`] functions later on.
+    /// aren't able to call the player's [`Player_::ui`]/[`Player_::ui_at`] functions later on.
     pub fn stop_direct(&mut self) {
         self.frame_thread = None;
         self.audio_thread = None;
@@ -543,7 +543,7 @@ impl Player {
         }
     }
 
-    /// Initializes the audio stream (if there is one), required for making a [`Player`] output audio.
+    /// Initializes the audio stream (if there is one), required for making a [`Player_`] output audio.
     /// Will stop and reset the player's state.
     pub fn set_audio(&mut self, audio_device: &mut AudioDevice) -> Result<()> {
         let audio_input_context = input(&self.input_path)?;
@@ -593,13 +593,13 @@ impl Player {
         Ok(())
     }
 
-    /// Enables using [`Player::set_audio`] with the builder pattern.
+    /// Enables using [`Player_::set_audio`] with the builder pattern.
     pub fn with_audio(mut self, audio_device: &mut AudioDevice) -> Result<Self> {
         self.set_audio(audio_device)?;
         Ok(self)
     }
 
-    /// Create a new [`Player`].
+    /// Create a new [`Player_`].
     pub fn new(ctx: &egui::Context, input_path: &String) -> Result<Self> {
         let input_context = input(&input_path)?;
         let video_stream = input_context
