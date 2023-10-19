@@ -2,12 +2,10 @@ use std::{fs, path};
 
 use egui::{Event, Key, PointerButton, Ui};
 
-use crate::{AudioDevice, init_audio_device_default, Player, PlayerState};
-use crate::player::Streamer;
+use crate::{Player, PlayerState};
 
 pub struct AppUi {
     collapse: bool,
-    audio_device: Option<AudioDevice>,
     player: Option<Player>,
 
     media_path: String,
@@ -34,7 +32,7 @@ impl AppUi {
 
             ui.input(|k| {
                 for e in &k.events {
-                    let mut seek = 0.0f32;
+                    let seek = 0.0f32;
                     match e {
                         Event::Key { key: Key::Escape, pressed: true, .. } => {
                             set_player_none = true;
@@ -62,7 +60,7 @@ impl AppUi {
                                             player.start();
                                         }
                                         PlayerState::Paused => {
-                                            // player.resume();
+                                            player.resume();
                                         }
                                         PlayerState::Playing => {
                                             player.pause();
@@ -193,7 +191,6 @@ impl Default for AppUi {
     fn default() -> Self {
         Self {
             collapse: true,
-            audio_device: Some(init_audio_device_default().unwrap()),
             player: None,
             media_path: String::default(),
             no_scale: true,

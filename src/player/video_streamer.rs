@@ -2,8 +2,8 @@ use egui::{Color32, ColorImage};
 use ffmpeg::decoder;
 use ffmpeg::format::context::input::Input;
 use ffmpeg::format::Pixel;
+use ffmpeg::frame::Video;
 use ffmpeg::software::scaling::{context::Context, flag::Flags};
-use ffmpeg::util::frame::video::Video;
 
 use crate::{PlayerState, Streamer};
 use crate::kits::Shared;

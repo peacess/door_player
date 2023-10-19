@@ -1,9 +1,11 @@
+use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use eframe::epaint::TextureHandle;
-use parking_lot::{Condvar, Mutex};
+use parking_lot::Mutex;
+use ringbuf::SharedRb;
 
 use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioFrame};
@@ -11,33 +13,6 @@ use crate::player::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
 use crate::player::player::PlayFrame;
 use crate::player::video::VideoFrame;
 use crate::PlayerState;
-
-#[derive(Clone, Default)]
-pub struct Pause {
-    pause: Arc<Mutex<bool>>,
-    pause_cond: Arc<Condvar>,
-}
-
-impl Pause {
-    pub fn pause(&self) -> bool {
-        *self.pause.lock()
-    }
-
-    pub fn set_pause(&self, pause: bool) {
-        *self.pause.lock() = pause;
-        if !pause {
-            self.notify_all();
-        }
-    }
-
-    pub fn wait(&self) {
-        self.pause_cond.wait(&mut self.pause.lock());
-    }
-
-    fn notify_all(&self) -> usize {
-        self.pause_cond.notify_all()
-    }
-}
 
 pub struct Clock {
     /// Clock的起始时间
@@ -81,9 +56,6 @@ pub struct PlayCtrl {
     pub player_state: Shared<PlayerState>,
     /// 解码开始时间, 也是音视频的起始时间
     start: Instant,
-    /// 取消请求, 在播放完成时, 会设置为true, 则 相关线程就会退出
-    abort_req: Arc<AtomicBool>,
-    pause: Pause,
     pub seek_scale: Arc<atomic::Atomic<f64>>,
     /// 解封装(取包)完成
     packet_finished: Arc<AtomicBool>,
@@ -91,7 +63,7 @@ pub struct PlayCtrl {
     video_finished: Arc<AtomicBool>,
     /// 控制同步
     video_clock: Arc<Mutex<Clock>>,
-    audio_dev: Arc<Mutex<AudioDevice>>,
+    pub(crate) audio_dev: Arc<AudioDevice>,
     audio_finished: Arc<AtomicBool>,
     /// 音量控制
     volume: Arc<atomic::Atomic<f32>>,
@@ -99,12 +71,13 @@ pub struct PlayCtrl {
     audio_clock: Arc<Mutex<Clock>>,
     /// The player's texture handle.
     pub texture_handle: egui::TextureHandle,
+    producer: Arc<Mutex<ringbuf::Producer<f32, Arc<ringbuf::HeapRb<f32>>>>>,
 }
 
 impl PlayCtrl {
     pub fn new(
-        audio_dev: Arc<Mutex<AudioDevice>>,
-        abort_request: Arc<AtomicBool>,
+        producer: ringbuf::Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
+        audio_dev: Arc<AudioDevice>,
         texture_handle: TextureHandle,
     ) -> Self {
         let start = Instant::now();
@@ -115,10 +88,8 @@ impl PlayCtrl {
         let audio_clock = Arc::new(Mutex::new(Clock::new(start.clone())));
 
         Self {
-            player_state: Shared::new(PlayerState::Stopped),
+            player_state: Shared::new(PlayerState::Paused),
             start,
-            abort_req: abort_request,
-            pause: Pause::default(),
             seek_scale: Arc::new(atomic::Atomic::new(-1.0)),
             packet_finished: demux_finished,
             video_finished,
@@ -128,12 +99,13 @@ impl PlayCtrl {
             audio_clock,
             volume: Arc::new(atomic::Atomic::new(1.0)),
             texture_handle,
+            producer: Arc::new(Mutex::new(producer)),
         }
     }
 
     /// 设置静音
     pub fn set_mute(&self, mute: bool) {
-        self.audio_dev.lock().set_mute(mute);
+        self.audio_dev.set_mute(mute);
     }
 
     /// 设置音量大小
@@ -148,33 +120,6 @@ impl PlayCtrl {
 
     pub fn seek(&mut self, seek_scale: f64) {
         self.seek_scale.store(seek_scale, Ordering::Relaxed);
-    }
-
-    /// 设置是否取消播放
-    pub fn set_abort_req(&self, abort_req: bool) {
-        self.abort_req.store(abort_req, Ordering::Relaxed);
-        self.audio_dev.lock().stop();
-    }
-
-    /// 是否取消播放
-    pub fn abort_req(&self) -> bool {
-        self.abort_req.load(Ordering::Relaxed)
-    }
-
-    /// 设置是否暂停播放
-    pub fn set_pause(&mut self, pause: bool) {
-        self.pause.set_pause(pause);
-        self.audio_dev.lock().set_pause(pause);
-    }
-
-    /// 是否暂停播放
-    pub fn pause(&self) -> bool {
-        self.pause.pause()
-    }
-
-    /// 等待解除暂停的通知
-    pub fn wait_notify_in_pause(&self) {
-        self.pause.wait();
     }
 
     /// 设置音频播放线程是否完成
@@ -209,15 +154,24 @@ impl PlayCtrl {
 
     /// 获取声音设备的默认配置
     pub fn audio_default_config(&self) -> cpal::SupportedStreamConfig {
-        self.audio_dev.lock().stream_config()
+        self.audio_dev.stream_config()
     }
 
     /// 播放音频帧
-    pub fn play_audio(&mut self, frame: AudioFrame) -> Result<(), anyhow::Error> {
+    pub fn play_audio(&mut self, mut frame: AudioFrame) -> Result<(), anyhow::Error> {
         // 更新音频时钟
-        let delay = self.update_audio_clock(frame.pts(), frame.duration());
+        let delay = self.update_audio_clock(frame.pts, frame.duration);
         // 播放
-        self.audio_dev.lock().play_source(frame);
+        let mut p = self.producer.lock();
+        while p.free_len() < frame.samples.len() {
+            spin_sleep::sleep(Duration::from_millis(10));
+        }
+        if self.audio_dev.get_mute() {
+            for f in frame.samples.as_mut_slice() {
+                *f = 0.0;
+            }
+        }
+        p.push_slice(frame.samples.as_slice());
         // 休眠
         // spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())
