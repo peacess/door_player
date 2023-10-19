@@ -23,7 +23,6 @@ use crate::player::video::VideoFrame;
 
 /// player base ffmpeg, there are 4 threads to player file.
 pub struct Player {
-    file_path: String,
     //是否需要停止播放相关线程
     pub play_ctrl: PlayCtrl,
     pub width: u32,
@@ -48,11 +47,9 @@ impl Player {
             PlayCtrl::new(producer, audio_dev, Self::default_texture_handle(ctx))
         };
 
-
         //打开文件
         let format_input = ffmpeg::format::input(&path::Path::new(file))?;
         let mut player = Self {
-            file_path: file.to_string(),
             play_ctrl,
             width: 0,
             height: 0,
@@ -150,7 +147,7 @@ impl Player {
         Ok(egui::ColorImage { size, pixels })
     }
 
-    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: Receiver<ffmpeg::Packet>, audio_deque: Sender<AudioFrame>) {
+    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: Receiver<Option<ffmpeg::Packet>>, audio_deque: Sender<AudioFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let mut audio_re_sampler = {
             let stream_config = play_ctrl.audio_config();
@@ -213,7 +210,7 @@ impl Player {
                             }
                         }
                         Err(e) => {
-                            log::info!("{}", e);
+                            log::debug!("{}", e);
                             break;
                         }
                     }
@@ -227,7 +224,7 @@ impl Player {
                         log::error!("{}", e);
                         break 'RUN;
                     }
-                    Ok(packet) => {
+                    Ok(Some(packet)) => {
                         if PlayerState::Stopped == play_ctrl.player_state.get() {
                             break 'RUN;
                         }
@@ -237,6 +234,15 @@ impl Player {
                             }
                             Ok(_) => {}
                         }
+                    }
+                    Ok(None) => {
+                        // match audio_decoder.0.send_eof() {
+                        //     Err(e) => {
+                        //         log::error!("{}", e);
+                        //     }
+                        //     Ok(_) => {}
+                        // }
+                        // audio_decoder.flush();
                     }
                 }
             }
@@ -282,7 +288,7 @@ impl Player {
         });
     }
 
-    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<ffmpeg::Packet>, video_deque: Sender<VideoFrame>, video_time_base: Rational) {
+    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, video_deque: Sender<VideoFrame>, _: Rational) {
         let play_ctrl = self.play_ctrl.clone();
         let width = video_decoder.width() as usize;
         let height = video_decoder.height() as usize;
@@ -295,7 +301,7 @@ impl Player {
             let mut frame = ffmpeg::frame::Video::empty();
             match video_decoder.receive_frame(&mut frame) {
                 Err(e) => {
-                    log::error!("{}", e);
+                    log::debug!("{}", e);
                 }
                 Ok(_) => {
                     let color_image = match Self::frame_to_color_image(&frame) {
@@ -338,13 +344,22 @@ impl Player {
                 Err(e) => {
                     log::error!("{}", e);
                 }
-                Ok(packet) => {
+                Ok(Some(packet)) => {
                     match video_decoder.0.send_packet(&packet) {
                         Err(e) => {
                             log::error!("{}", e);
                         }
                         Ok(_) => {}
                     }
+                }
+                Ok(None) => {
+                    // match video_decoder.0.send_eof() {
+                    //     Err(e) => {
+                    //         log::error!("{}", e);
+                    //     }
+                    //     Ok(_) => {}
+                    // }
+                    // video_decoder.flush();
                 }
             }
         });
@@ -388,8 +403,8 @@ impl Player {
 
     fn read_packet_run(&self, mut input: ffmpeg::format::context::Input,
                        ctx: egui::Context,
-                       mut video_decoder: Video, audio_deque: kanal::Sender<ffmpeg::Packet>, audio_index: usize,
-                       video_deque: kanal::Sender<ffmpeg::Packet>, video_index: usize) {
+                       mut video_decoder: Video, audio_deque: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize,
+                       video_deque: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize) {
         let mut play_ctrl = self.play_ctrl.clone();
         let duration = input.duration();
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
@@ -407,11 +422,12 @@ impl Player {
                     let mut frame = ffmpeg::frame::Video::empty();
                     match video_decoder.receive_frame(&mut frame) {
                         Err(e) => {
-                            log::error!("{}", e);
+                            log::debug!("{}", e);
                         }
                         Ok(_) => {
                             let color_image = match Self::frame_to_color_image(&frame) {
                                 Err(e) => {
+                                    log::error!("{}", e);
                                     break;
                                 }
                                 Ok(t) => t,
@@ -449,6 +465,11 @@ impl Player {
                         log::error!("{}", e);
                     }
                     play_ctrl.seek(-1.0);
+                    //清空之前的数据
+                    let _ = audio_deque.send(None);
+                    let _ = audio_deque.send(None);
+                    let _ = video_deque.send(None);
+                    let _ = video_deque.send(None);
                 } else {
                     if play_ctrl.player_state.get() == PlayerState::Paused || audio_deque.is_full() || video_deque.is_full() {
                         spin_sleep::sleep(PLAY_MIN_INTERVAL);
@@ -462,14 +483,14 @@ impl Player {
                             if let Some(dts) = packet.dts() {
                                 play_ctrl.audio_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
                             }
-                            if let Err(e) = audio_deque.send(packet) {
+                            if let Err(e) = audio_deque.send(Some(packet)) {
                                 log::error!("{}", e);
                             }
                         } else if packet.stream() == video_index {
                             if let Some(dts) = packet.dts() {
                                 play_ctrl.video_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
                             }
-                            if let Err(e) = video_deque.send(packet) {
+                            if let Err(e) = video_deque.send(Some(packet)) {
                                 log::error!("{}", e);
                             }
                         }

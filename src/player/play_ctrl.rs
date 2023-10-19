@@ -161,10 +161,9 @@ impl PlayCtrl {
     /// 播放音频帧
     pub fn play_audio(&mut self, mut frame: AudioFrame) -> Result<(), anyhow::Error> {
         // 更新音频时钟
-        let delay = self.update_audio_clock(frame.pts, frame.duration);
-        // 播放
-        let mut p = self.producer.lock();
-        while p.free_len() < frame.samples.len() {
+        let _ = self.update_audio_clock(frame.pts, frame.duration);
+        let mut producer = self.producer.lock();
+        while producer.free_len() < frame.samples.len() {
             spin_sleep::sleep(Duration::from_millis(10));
         }
         if self.audio_dev.get_mute() {
@@ -172,27 +171,16 @@ impl PlayCtrl {
                 *f = 0.0;
             }
         }
-        p.push_slice(frame.samples.as_slice());
-        // 休眠
+        producer.push_slice(frame.samples.as_slice());
         // spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())
     }
 
     /// 播放视频帧
     pub fn play_video(&mut self, frame: VideoFrame, ctx: &egui::Context) -> Result<(), anyhow::Error> {
-        // 更新视频时钟
-        let delay = self.update_video_clock(frame.pts, frame.duration);
-
-        // 播放
+        let _ = self.update_video_clock(frame.pts, frame.duration);
         self.texture_handle.set(frame.color_image, egui::TextureOptions::LINEAR);
         ctx.request_repaint();
-        // match self.send_state(PlayState::Video(frame)) {
-        //     Ok(_) => {}
-        //     Err(SendError::Closed) | Err(SendError::ReceiveClosed) => {
-        //         return Err(anyhow::Error::msg("play channel disconnected"));
-        //     }
-        // }
-        // 休眠
         // spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())
     }
