@@ -29,7 +29,7 @@ pub struct Player {
     pub height: u32,
 
     pub max_audio_volume: f32,
-    duration_ms: i64,
+    pub duration_ms: i64,
     last_seek_ms: Option<i64>,
     // pre_seek_player_state: Option<PlayerState>,
     #[cfg(feature = "from_bytes")]
@@ -169,6 +169,7 @@ impl Player {
         let _ = std::thread::Builder::new().name("audio decode".to_string()).spawn(move || {
             'RUN: loop {
                 if PlayerState::Stopped == play_ctrl.player_state.get() {
+                    log::info!("audio decode exit");
                     break 'RUN;
                 }
 
@@ -215,6 +216,7 @@ impl Player {
                         }
                     }
                     if PlayerState::Stopped == play_ctrl.player_state.get() {
+                        log::info!("audio decode exit");
                         break 'RUN;
                     }
                 }
@@ -226,9 +228,10 @@ impl Player {
                     }
                     Ok(Some(packet)) => {
                         if PlayerState::Stopped == play_ctrl.player_state.get() {
+                            log::info!("audio decode exit");
                             break 'RUN;
                         }
-                        match audio_decoder.0.send_packet(&packet) {
+                        match audio_decoder.send_packet(&packet) {
                             Err(e) => {
                                 log::error!("{}", e);
                             }
@@ -236,7 +239,7 @@ impl Player {
                         }
                     }
                     Ok(None) => {
-                        // match audio_decoder.0.send_eof() {
+                        // match audio_decoder.send_eof() {
                         //     Err(e) => {
                         //         log::error!("{}", e);
                         //     }
@@ -255,13 +258,22 @@ impl Player {
             let mut empty_count = 0;
             loop {
                 if play_ctrl.player_state.get() == PlayerState::Stopped {
+                    log::info!("audio play exit");
                     break;
                 }
                 match frame_deque.try_recv() {
                     Err(e) => {
                         log::error!("{}", e);
+                        empty_count += 1;
+                        if empty_count == 10 {
+                            play_ctrl.set_audio_finished(true);
+                            log::info!("audio play exit");
+                            break;
+                        }
                     }
-                    Ok(None) => {}
+                    Ok(None) => {
+                        empty_count = 0;
+                    }
                     Ok(Some(frame)) => {
                         match play_ctrl.play_audio(frame) {
                             Err(e) => {
@@ -271,16 +283,6 @@ impl Player {
                         }
                         empty_count = 0;
                         continue;
-                    }
-                }
-
-                empty_count += 1;
-                if empty_count == 10 {
-                    if play_ctrl.player_state.get() == PlayerState::Paused {
-                        empty_count = 0;
-                    } else {
-                        play_ctrl.set_audio_finished(true);
-                        break;
                     }
                 }
                 spin_sleep::sleep(PLAY_MIN_INTERVAL);
@@ -293,9 +295,9 @@ impl Player {
         let width = video_decoder.width() as usize;
         let height = video_decoder.height() as usize;
 
-        // let duration = 1.0 / av_q2d(video_decoder..framerate);
         let _ = std::thread::Builder::new().name("video decode".to_string()).spawn(move || loop {
             if PlayerState::Stopped == play_ctrl.player_state.get() {
+                log::info!("video decode exit");
                 break;
             }
             let mut frame = ffmpeg::frame::Video::empty();
@@ -345,7 +347,7 @@ impl Player {
                     log::error!("{}", e);
                 }
                 Ok(Some(packet)) => {
-                    match video_decoder.0.send_packet(&packet) {
+                    match video_decoder.send_packet(&packet) {
                         Err(e) => {
                             log::error!("{}", e);
                         }
@@ -353,7 +355,7 @@ impl Player {
                     }
                 }
                 Ok(None) => {
-                    // match video_decoder.0.send_eof() {
+                    // match video_decoder.send_eof() {
                     //     Err(e) => {
                     //         log::error!("{}", e);
                     //     }
@@ -371,29 +373,31 @@ impl Player {
             let mut empty_count = 0;
             loop {
                 if PlayerState::Stopped == play_ctrl.player_state.get() {
+                    log::info!("video play exit");
                     break;
                 }
                 match frame_deque.try_recv() {
                     Err(e) => {
                         log::error!("{}", e);
+                        empty_count += 1;
+                        if empty_count == 10 {
+                            play_ctrl.set_video_finished(true);
+                            log::info!("video play exit");
+                            break;
+                        }
                     }
-                    Ok(None) => {}
+                    Ok(None) => {
+                        empty_count = 0;
+                    }
                     Ok(Some(frame)) => {
-                        play_ctrl.play_video(frame, &ctx)?;
+                        if let Err(e) = play_ctrl.play_video(frame, &ctx) {
+                            log::error!("{}", e);
+                        }
                         empty_count = 0;
                         continue;
                     }
                 }
 
-                empty_count += 1;
-                if empty_count == 10 {
-                    if play_ctrl.player_state.get() == PlayerState::Paused {
-                        empty_count = 0;
-                    } else {
-                        play_ctrl.set_video_finished(true);
-                        break;
-                    }
-                }
                 spin_sleep::sleep(PLAY_MIN_INTERVAL);
             }
 
@@ -415,7 +419,7 @@ impl Player {
                         continue;
                     }
 
-                    if let Err(e) = video_decoder.0.send_packet(&packet) {
+                    if let Err(e) = video_decoder.send_packet(&packet) {
                         log::error!("{}", e);
                         break;
                     }
@@ -442,8 +446,9 @@ impl Player {
             {
                 let beginning: i64 = 0;
                 let beginning_seek = beginning.rescale((1, 1), rescale::TIME_BASE);
-                let _ = input.seek(beginning_seek, ..beginning_seek);
-                video_decoder.flush();
+                if let Err(e) = input.seek(beginning_seek, ..beginning_seek) {
+                    log::error!("{}", e);
+                }
                 drop(video_decoder);
                 drop(ctx);
             }

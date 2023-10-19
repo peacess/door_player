@@ -32,7 +32,7 @@ impl AppUi {
 
             ui.input(|k| {
                 for e in &k.events {
-                    let seek = 0.0f32;
+                    let mut seek = 0.0f32;
                     match e {
                         Event::Key { key: Key::Escape, pressed: true, .. } => {
                             set_player_none = true;
@@ -40,16 +40,14 @@ impl AppUi {
                         Event::Key { key, pressed: true, .. } => {
                             match *key {
                                 Key::ArrowLeft => {
-                                    // let mut v = player.video_streamer.lock();
-                                    // let els = v.elapsed_ms().get() as f32 - 1.0;
-                                    // if els > 0.0 {
-                                    //     seek = els / v.duration_ms() as f32;
-                                    // }
+                                    let diff = player.video_elapsed_ms.get() as f32 - 10.0;
+                                    if diff > 0.0 {
+                                        seek = diff / player.duration_ms as f32;
+                                    }
                                 }
                                 Key::ArrowRight => {
-                                    // let mut v = player.video_streamer.lock();
-                                    // let els = v.elapsed_ms().get() as f32 + 1.0;
-                                    // seek = els / v.duration_ms() as f32;
+                                    let diff = player.video_elapsed_ms.get() as f32 + 10.0;
+                                    seek = diff / player.duration_ms as f32;
                                 }
                                 Key::ArrowUp => {}
                                 Key::ArrowDown => {}
@@ -74,7 +72,7 @@ impl AppUi {
                         _ => {}
                     }
                     if seek > 0.0 {
-                        // player.seek(seek);
+                        player.seek(seek as f64);
                     }
                 }
             });
