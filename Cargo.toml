@@ -21,7 +21,6 @@ rfd = "0.12.0"
 sdl2 = "0.35.2"
 #ffmpeg = {package = "ffmpeg-the-third", version = "1.2.2+ffmpeg-6.0" }
 ffmpeg = {package = "ffmpeg-next", version = "6.0.0", features = ["static"] }
-rodio = "0.17.1"
 cpal = "0.15.2"
 spin_sleep = "1.1.1"
 
