@@ -3,47 +3,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use eframe::epaint::TextureHandle;
-use kanal::Sender;
 use parking_lot::{Condvar, Mutex, RwLock};
 
-use crate::kits::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
+use crate::player::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::player::PlayFrame;
 use crate::player::video::VideoFrame;
-
-pub enum Command {
-    Terminate,
-    Pause(bool),
-    Mute(bool),
-    Volume(f32),
-}
-
-#[derive(Debug)]
-pub enum PlayState {
-    Start,
-    Playing,
-    /// 终止
-    Terminated,
-    Pausing(bool),
-    Video(VideoFrame),
-    Error(anyhow::Error),
-}
-
-impl Default for PlayState {
-    fn default() -> Self {
-        Self::Start
-    }
-}
-
-impl PartialEq for PlayState {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Video(_), Self::Video(_)) => true,
-            _ => core::mem::discriminant(self) == core::mem::discriminant(other),
-        }
-    }
-}
-
 
 #[derive(Clone, Default)]
 pub struct Pause {
@@ -111,8 +76,6 @@ impl Clock {
 
 #[derive(Clone)]
 pub struct PlayCtrl {
-    /// 用于和 ui 交互, 发布状态信息
-    state_tx: Sender<PlayState>,
     /// 解码开始时间, 也是音视频的起始时间
     start: Instant,
     /// 取消请求, 在播放完成时, 会设置为true, 则 相关线程就会退出
@@ -134,7 +97,7 @@ pub struct PlayCtrl {
         音频
     */
     /// 音频设备
-    audio_dev: Arc<RwLock<AudioDevice>>,
+    audio_dev: Arc<Mutex<AudioDevice>>,
     /// 音频播放线程完成
     audio_finished: Arc<AtomicBool>,
     // /// 音频包解码后得到的音频帧转换成的 音频采样数据
@@ -150,8 +113,7 @@ pub struct PlayCtrl {
 
 impl PlayCtrl {
     pub fn new(
-        audio_dev: Arc<RwLock<AudioDevice>>,
-        state_tx: Sender<PlayState>,
+        audio_dev: Arc<Mutex<AudioDevice>>,
         abort_request: Arc<AtomicBool>,
         texture_handle: TextureHandle,
     ) -> Self {
@@ -163,7 +125,6 @@ impl PlayCtrl {
         let audio_clock = Arc::new(RwLock::new(Clock::new(start.clone())));
 
         Self {
-            state_tx,
             start,
             abort_req: abort_request,
             pause: Pause::default(),
@@ -180,7 +141,7 @@ impl PlayCtrl {
 
     /// 设置静音
     pub fn set_mute(&self, mute: bool) {
-        self.audio_dev.write().set_mute(mute);
+        self.audio_dev.lock().set_mute(mute);
     }
 
     /// 设置音量大小
@@ -196,7 +157,7 @@ impl PlayCtrl {
     /// 设置是否取消播放
     pub fn set_abort_req(&self, abort_req: bool) {
         self.abort_req.store(abort_req, Ordering::Relaxed);
-        self.audio_dev.write().stop();
+        self.audio_dev.lock().stop();
     }
 
     /// 是否取消播放
@@ -207,8 +168,7 @@ impl PlayCtrl {
     /// 设置是否暂停播放
     pub fn set_pause(&mut self, pause: bool) {
         self.pause.set_pause(pause);
-        self.audio_dev.write().set_pause(pause);
-        self.state_tx.send(PlayState::Pausing(pause)).ok();
+        self.audio_dev.lock().set_pause(pause);
     }
 
     /// 是否暂停播放
@@ -253,17 +213,17 @@ impl PlayCtrl {
 
     /// 获取声音设备的默认配置
     pub fn audio_default_config(&self) -> cpal::SupportedStreamConfig {
-        self.audio_dev.read().default_config()
+        self.audio_dev.lock().stream_config()
     }
 
     /// 播放音频帧
-    pub fn play_audio(&self, frame: AudioFrame) -> Result<(), anyhow::Error> {
+    pub fn play_audio(&mut self, frame: AudioFrame) -> Result<(), anyhow::Error> {
         // 更新音频时钟
         let delay = self.update_audio_clock(frame.pts(), frame.duration());
         // 播放
-        self.audio_dev.write().play_source(frame);
+        self.audio_dev.lock().play_source(frame);
         // 休眠
-        spin_sleep::sleep(Duration::from_secs_f64(delay));
+        // spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())
     }
 
@@ -281,7 +241,7 @@ impl PlayCtrl {
         //     }
         // }
         // 休眠
-        spin_sleep::sleep(Duration::from_secs_f64(delay));
+        // spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())
     }
 

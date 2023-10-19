@@ -25,7 +25,7 @@ cpal = "0.15.2"
 spin_sleep = "1.1.1"
 
 #atomic = "0.6"
-ringbuf = "0.3"
+ringbuf = "0.3.3"
 timer="0.2.0"
 rust_kits = {version = "0.1.0",git = "https://github.com/peacess/rust.git"}
 #

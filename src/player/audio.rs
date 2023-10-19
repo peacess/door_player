@@ -1,9 +1,10 @@
+use std::sync::Arc;
 use std::time::Duration;
 use std::vec::IntoIter;
 
-use cpal::{FromSample, SupportedStreamConfig};
-use cpal::traits::{DeviceTrait, HostTrait};
-use rodio::{OutputStream, Sample, Sink, Source};
+use cpal::SupportedStreamConfig;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use rodio::Source;
 
 use crate::player::player::PlayFrame;
 
@@ -88,70 +89,86 @@ impl Source for AudioFrame {
 }
 
 pub struct AudioDevice {
-    _stream: OutputStream,
-    sink: Sink,
-    default_config: SupportedStreamConfig,
+    stream: cpal::Stream,
+    config: SupportedStreamConfig,
+    producer: ringbuf::Producer<f32, Arc<ringbuf::HeapRb<f32>>>,
 }
 
 impl AudioDevice {
     pub fn new() -> Result<Self, anyhow::Error> {
-        let default_device = cpal::default_host().default_output_device().ok_or(ffmpeg::Error::OptionNotFound)?;
+        let device = cpal::default_host().default_output_device().ok_or(ffmpeg::Error::OptionNotFound)?;
 
-        let default_config = default_device.default_input_config()?;
+        let (mut producer,mut consumer) = ringbuf::HeapRb::<f32>::new(8192).split();
 
-        let default_stream = OutputStream::try_from_device(&default_device);
+        let config = device.default_input_config()?;
 
-        let (_stream, handle) = default_stream
-            .or_else(|original_err| {
-                // default device didn't work, try other ones
-                let mut devices = match cpal::default_host().output_devices() {
-                    Ok(d) => d,
-                    Err(_) => return Err(original_err),
-                };
-                devices
-                    .find_map(|d| OutputStream::try_from_device(&d).ok())
-                    .ok_or(original_err)
-            })?;
+        let stream = device.build_output_stream(&config.clone().into(),move |data: &mut [f32], cbinfo|{
+            Self::write_audio(data, &mut consumer, cbinfo);
+        }, |e| {
+            log::error!("{}", e);
+        }, None)?;
 
-        let sink = rodio::Sink::try_new(&handle).unwrap();
         Ok(Self {
-            _stream,
-            sink,
-            default_config,
+            stream,
+            config,
+            producer,
         })
     }
 
-    pub fn default_config(&self) -> SupportedStreamConfig {
-        self.default_config.clone()
+    pub fn stream_config(&self) -> SupportedStreamConfig {
+        self.config.clone()
     }
 
-    pub fn play_source<S>(&self, audio_source: S)
-        where
-            S: Source + Send + 'static,
-            f32: FromSample<S::Item>,
-            S::Item: Sample + Send,
-    {
-        self.sink.append(audio_source);
+    pub fn play_source(&mut self, audio_frame: AudioFrame) {
+        while self.producer.free_len() < audio_frame.samples.len() {
+            spin_sleep::sleep(Duration::from_millis(10));
+        }
+        self.producer.push_slice(audio_frame.samples.as_slice());
     }
 
     pub fn set_mute(&self, mute: bool) {
-        if mute {
-            self.sink.set_volume(0.0);
-        } else {
-            self.sink.set_volume(1.0);
-        }
+        //todo
+        // if mute {
+        //     self.sink.set_volume(0.0);
+        // } else {
+        //     self.sink.set_volume(1.0);
+        // }
     }
 
     pub fn set_pause(&self, pause: bool) {
         if pause {
-            self.sink.pause();
+            if let Err(e) = self.stream.pause(){
+                log::error!("{}", e);
+            }
         } else {
-            self.sink.play();
+            if let Err(e) = self.stream.play(){
+                log::error!("{}", e);
+            }
         }
     }
 
     pub fn stop(&self) {
-        self.sink.stop();
+        if let Err(e) = self.stream.pause(){
+            log::error!("{}", e);
+        }
+    }
+
+    fn write_audio<T: cpal::Sample>(data: &mut [T], consumer: &mut ringbuf::Consumer<T,Arc<ringbuf::HeapRb<T>>>, _: &cpal::OutputCallbackInfo) {
+        // if consumer.len() > 2 * 1024 * 1024 {
+        //     consumer.pop_slice(data);
+        // }else {
+        //     for d in data.iter_mut() {
+        //         *d = T::EQUILIBRIUM;
+        //     }
+        // }
+        for d in data {
+            // copy as many samples as we have.
+            // if we run out, write silence
+            match consumer.pop() {
+                Some(sample) => *d = sample,
+                None => *d = T::EQUILIBRIUM // Sample::from(&0.0)
+            }
+        }
     }
 }
 

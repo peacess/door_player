@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-pub const AUDIO_FRAME_QUEUE_SIZE: usize = 5;
+pub const AUDIO_FRAME_QUEUE_SIZE: usize = 10;
 pub const VIDEO_FRAME_QUEUE_SIZE: usize = 1;
 
 pub const PLAY_MIN_INTERVAL: Duration = Duration::from_millis(50);

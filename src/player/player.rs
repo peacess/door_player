@@ -7,12 +7,12 @@ use egui::load::SizedTexture;
 use ffmpeg::Rational;
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 
-use crate::kits::consts::{AUDIO_FRAME_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE};
+use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE};
 use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioFrame};
-use crate::player::play_ctrl::{Command, PlayCtrl, PlayState};
+use crate::player::play_ctrl::PlayCtrl;
 use crate::player::video::VideoFrame;
 use crate::PlayerState;
 
@@ -36,7 +36,6 @@ pub struct Player {
     //是否需要停止播放相关线程
     pub play_ctrl: PlayCtrl,
     pub player_state: Shared<PlayerState>,
-    cmd_sender: kanal::Sender<Command>,
 
     ctx_ref: egui::Context,
 
@@ -47,26 +46,20 @@ pub struct Player {
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
     pub fn new(ctx:&egui::Context, file: &str) -> Result<Player, anyhow::Error> {
-        let (cmd_sender, cmd_receiver) = kanal::bounded::<Command>(2);
-        let (state_sender, state_receiver) = kanal::bounded::<PlayState>(1);
         let abort_req = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         let play_ctrl = {
-            let audio_dev = AudioDevice::new()
-                .map_err(|e| {
-                    state_sender.send(PlayState::Error(e)).ok();
-                })
-                .unwrap();
-            let audio_dev = Arc::new(RwLock::new(audio_dev));
+            let audio_dev = AudioDevice::new()?;
+            let audio_dev = Arc::new(Mutex::new(audio_dev));
+            audio_dev.lock().set_pause(false);
 
-            PlayCtrl::new(audio_dev, state_sender, abort_req, Self::default_texture_handle(ctx))
+            PlayCtrl::new(audio_dev,  abort_req, Self::default_texture_handle(ctx))
         };
         let mut player = Self {
             ctx_ref: ctx.clone(),
             file_path: file.to_string(),
             play_ctrl,
             player_state: Shared::new(PlayerState::Stopped),
-            cmd_sender,
             width: 0,
             height: 0,
         };
@@ -93,8 +86,8 @@ impl Player {
             (audio_index, audio_decoder)
         };
 
-        let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(20);
-        let (video_packet_sender, video_packet_receiver) = kanal::bounded(20);
+        let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(100);
+        let (video_packet_sender, video_packet_receiver) = kanal::bounded(100);
 
         let (audio_frame_tx, audio_frame_rx) = kanal::bounded::<AudioFrame>(AUDIO_FRAME_QUEUE_SIZE);
         let (video_frame_tx, video_frame_rx) = kanal::bounded::<VideoFrame>(VIDEO_FRAME_QUEUE_SIZE);
@@ -113,10 +106,12 @@ impl Player {
         //开启 视频解码线程
         player.video_decode_run(video_decoder, video_packet_receiver, video_frame_tx, video_time_base);
         //开启 视频播放
-        player.video_play_run(video_frame_rx);
+        player.video_play_run(ctx.clone(), video_frame_rx);
         //开启 读frame线程
         player.read_packet_run(format_input, audio_packet_sender, audio_index,
-                               video_packet_sender, video_index, cmd_receiver);
+                               video_packet_sender, video_index);
+
+        // player.play_ctrl.set_pause(false);
         Ok(player)
     }
 
@@ -185,11 +180,11 @@ impl Player {
                 }
 
                 loop {
-                    let mut frame = unsafe { ffmpeg::frame::Audio::empty() };
-                    match audio_decoder.receive_frame(&mut frame) {
+                    let mut frame_old = unsafe { ffmpeg::frame::Audio::empty() };
+                    match audio_decoder.receive_frame(&mut frame_old) {
                         Ok(_) => {
-                            let mut resampled_frame = ffmpeg::frame::Audio::empty();
-                            match audio_re_sampler.run(&frame, &mut resampled_frame) {
+                            let mut frame_resample = ffmpeg::frame::Audio::empty();
+                            match audio_re_sampler.run(&frame_old, &mut frame_resample) {
                                 Err(e) => {
                                     log::error!("{}", e);
                                     continue;
@@ -198,24 +193,19 @@ impl Player {
                                     //todo delay
                                 }
                             }
-                            let samples = if resampled_frame.is_packed() {
-                                unsafe {
-                                    std::slice::from_raw_parts(
-                                        (*frame.as_ptr()).data[0] as *const f32,
-                                        frame.samples() * frame.channels() as usize,
-                                    )
-                                }
+                            let re_samples_ref = if frame_resample.is_packed() {
+                                Self::packed(&frame_resample)
                             } else {
-                                resampled_frame.plane(0)
+                                frame_resample.plane(0)
                             };
-                            let pts = frame.pts().expect("") as f64 / frame.rate() as f64;
-                            let duration = frame.samples() as f64 / frame.rate() as f64;
+                            let pts = frame_old.pts().expect("") as f64 / frame_old.rate() as f64;
+                            let duration = frame_old.samples() as f64 / frame_old.rate() as f64;
                             let v = play_ctrl.volume();
-                            let samples: Vec<f32> = samples.iter().map(|s| s * v).collect();
+                            let samples: Vec<f32> = re_samples_ref.iter().map(|s| s * v).collect();
                             let audio_frame = AudioFrame {
                                 samples: samples.into_iter(),
-                                channels: frame.channels(),
-                                sample_rate: frame.rate(),
+                                channels: frame_resample.channels(),
+                                sample_rate: frame_resample.rate(),
                                 pts,
                                 duration,
                             };
@@ -258,7 +248,7 @@ impl Player {
     }
 
     fn audio_play_run(&self, frame_deque: Receiver<AudioFrame>) {
-        let play_ctrl = self.play_ctrl.clone();
+        let mut play_ctrl = self.play_ctrl.clone();
         std::thread::spawn(move || {
             let mut empty_count = 0;
             loop {
@@ -367,7 +357,7 @@ impl Player {
         });
     }
 
-    fn video_play_run(&self, mut frame_deque: Receiver<VideoFrame>) {
+    fn video_play_run(&self,ctx: egui::Context, mut frame_deque: Receiver<VideoFrame>) {
         let mut play_ctrl = self.play_ctrl.clone();
         std::thread::spawn(move || {
             let mut empty_count = 0;
@@ -382,6 +372,7 @@ impl Player {
                     Ok(None) => {}
                     Ok(Some(frame)) =>{
                         play_ctrl.play_video(frame)?;
+                        ctx.request_repaint();
                         empty_count = 0;
                         continue;
                     }
@@ -400,41 +391,14 @@ impl Player {
     }
 
     fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: kanal::Sender<ffmpeg::Packet>, audio_index: usize,
-                       video_deque: kanal::Sender<ffmpeg::Packet>, video_index: usize,
-                       cmd_receiver: Receiver<Command>) {
+                       video_deque: kanal::Sender<ffmpeg::Packet>, video_index: usize) {
         let mut play_ctrl = self.play_ctrl.clone();
         std::thread::spawn(move || {
             loop {
                 if play_ctrl.abort_req() {
                     break;
                 }
-                match cmd_receiver.try_recv() {
-                    Err(e) => {
-                        log::error!("{}", e);
-                    }
-                    Ok(cmd) => {
-                        match cmd {
-                            None => {}
-                            Some(cmd) => {
-                                match cmd {
-                                    Command::Terminate => {
-                                        play_ctrl.set_abort_req(true);
-                                        break;
-                                    }
-                                    Command::Pause(pause) => {
-                                        play_ctrl.set_pause(pause);
-                                    }
-                                    Command::Mute(mute) => {
-                                        play_ctrl.set_mute(mute);
-                                    }
-                                    Command::Volume(volume) => {
-                                        play_ctrl.set_volume(volume);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+
                 if play_ctrl.pause() || audio_deque.is_full() || video_deque.is_full() {
                     spin_sleep::sleep(Duration::from_millis(20));
                     continue;
@@ -463,6 +427,18 @@ impl Player {
                 spin_sleep::sleep(Duration::from_millis(20));
             }
         });
+    }
+
+    pub fn packed<T: ffmpeg::frame::audio::Sample>(frame: &ffmpeg::frame::Audio) -> &[T] {
+        if !frame.is_packed() {
+            panic!("data is not packed");
+        }
+
+        if !<T as ffmpeg::frame::audio::Sample>::is_valid(frame.format(), frame.channels()) {
+            panic!("unsupported type");
+        }
+
+        unsafe { std::slice::from_raw_parts((*frame.as_ptr()).data[0] as *const T, frame.samples() * frame.channels() as usize) }
     }
 }
 
@@ -495,7 +471,7 @@ fn to_sample(sample_format: cpal::SampleFormat) -> ffmpeg::format::Sample {
     use ffmpeg::format::Sample as Sample;
     use cpal::SampleFormat as SampleFormat;
 
-    match sample_format {
+    match &sample_format {
         SampleFormat::I8 => Sample::U8(SampleType::Packed),
         SampleFormat::U8 => Sample::U8(SampleType::Packed),
         SampleFormat::I16 => Sample::I16(SampleType::Packed),
