@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
+use bytemuck::NoUninit;
 use eframe::epaint::TextureHandle;
 use parking_lot::Mutex;
 use ringbuf::SharedRb;
@@ -10,9 +11,26 @@ use ringbuf::SharedRb;
 use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
-use crate::player::player::PlayFrame;
+use crate::player::RingBufferProducer;
 use crate::player::video::VideoFrame;
-use crate::PlayerState;
+
+#[derive(PartialEq, Clone, Copy, Debug)]
+pub enum PlayerState {
+    /// No playback.
+    Stopped,
+    /// Streams have reached the end of the file.
+    EndOfFile,
+    /// Stream is seeking. Inner bool represents whether or not the seek is completed.
+    Seeking(bool),
+    /// Playback is paused.
+    Paused,
+    /// Playback is ongoing.
+    Playing,
+    /// Playback is scheduled to restart.
+    Restarting,
+}
+
+unsafe impl NoUninit for PlayerState {}
 
 pub struct Clock {
     /// Clock的起始时间
@@ -71,7 +89,7 @@ pub struct PlayCtrl {
     audio_clock: Arc<Mutex<Clock>>,
     /// The player's texture handle.
     pub texture_handle: egui::TextureHandle,
-    producer: Arc<Mutex<ringbuf::Producer<f32, Arc<ringbuf::HeapRb<f32>>>>>,
+    producer: Arc<Mutex<RingBufferProducer<f32>>>,
 
     pub video_elapsed_ms: Shared<i64>,
     pub audio_elapsed_ms: Shared<i64>,
@@ -108,17 +126,12 @@ impl PlayCtrl {
         }
     }
 
-    /// 设置静音
     pub fn set_mute(&self, mute: bool) {
         self.audio_dev.set_mute(mute);
     }
-
-    /// 设置音量大小
     pub fn set_volume(&self, volume: f32) {
         self.volume.store(volume, Ordering::Relaxed);
     }
-
-    /// 当前音量
     pub fn volume(&self) -> f32 {
         self.volume.load(Ordering::Relaxed)
     }
@@ -126,39 +139,29 @@ impl PlayCtrl {
     pub fn seek(&mut self, seek_scale: f64) {
         self.seek_scale.store(seek_scale, Ordering::Relaxed);
     }
-
-    /// 设置音频播放线程是否完成
     pub fn set_audio_finished(&self, finished: bool) {
         self.audio_finished.store(finished, Ordering::Relaxed);
     }
-
-    /// 音频播放线程是否完成
     pub fn audio_finished(&self) -> bool {
         self.audio_finished.load(Ordering::Relaxed)
     }
-
-    /// 设置视频播放线程是否完成
     pub fn set_video_finished(&self, finished: bool) {
         self.video_finished.store(finished, Ordering::Relaxed);
     }
-
-    /// 视频播放线程是否完成
     pub fn video_finished(&self) -> bool {
         self.video_finished.load(Ordering::Relaxed)
     }
-
-    /// 设置解封装播放线程是否完成
-    pub fn set_demux_finished(&self, demux_finished: bool) {
+    pub fn set_packet_finished(&self, demux_finished: bool) {
         self.packet_finished.store(demux_finished, Ordering::Relaxed);
     }
 
     /// 解封装播放线程是否完成
-    pub fn demux_finished(&self) -> bool {
+    pub fn packet_finished(&self) -> bool {
         self.packet_finished.load(Ordering::Relaxed)
     }
 
     /// 获取声音设备的默认配置
-    pub fn audio_default_config(&self) -> cpal::SupportedStreamConfig {
+    pub fn audio_config(&self) -> cpal::SupportedStreamConfig {
         self.audio_dev.stream_config()
     }
 
@@ -185,7 +188,7 @@ impl PlayCtrl {
     /// 播放视频帧
     pub fn play_video(&mut self, frame: VideoFrame, ctx: &egui::Context) -> Result<(), anyhow::Error> {
         // 更新视频时钟
-        let delay = self.update_video_clock(frame.pts(), frame.duration());
+        let delay = self.update_video_clock(frame.pts, frame.duration);
 
         // 播放
         self.texture_handle.set(frame.color_image, egui::TextureOptions::LINEAR);

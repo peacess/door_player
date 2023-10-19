@@ -6,7 +6,7 @@ use std::sync::atomic::Ordering;
 use std::time::UNIX_EPOCH;
 
 use chrono::{DateTime, Utc};
-use egui::{Align2, Color32, Context, FontId, Image, Rect, Response, Rounding, Sense, Spinner, Ui, vec2, Vec2};
+use egui::{Align2, Color32, FontId, Image, Rect, Response, Rounding, Sense, Spinner, Ui, vec2, Vec2};
 use egui::epaint::Shadow;
 use egui::load::SizedTexture;
 use ffmpeg::{Rational, Rescale, rescale};
@@ -14,27 +14,13 @@ use ffmpeg::decoder::Video;
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
-use crate::{AV_TIME_BASE_RATIONAL, PlayerState};
 use crate::kits::Shared;
+use crate::player::{AV_TIME_BASE_RATIONAL, PlayerState};
 use crate::player::audio::{AudioDevice, AudioFrame};
-use crate::player::const_v::timestamp_to_millisecond;
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
+use crate::player::kits::timestamp_to_millisecond;
 use crate::player::play_ctrl::PlayCtrl;
 use crate::player::video::VideoFrame;
-
-// use ffmpeg::format::Sample;
-
-pub trait PlayFrame: std::fmt::Debug {
-    fn pts(&self) -> f64 {
-        0.0
-    }
-    fn duration(&self) -> f64 {
-        0.0
-    }
-    fn mem_size(&self) -> usize {
-        0
-    }
-}
 
 /// player base ffmpeg, there are 4 threads to player file.
 pub struct Player {
@@ -170,7 +156,7 @@ impl Player {
     fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: Receiver<ffmpeg::Packet>, audio_deque: Sender<AudioFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let mut audio_re_sampler = {
-            let stream_config = play_ctrl.audio_default_config();
+            let stream_config = play_ctrl.audio_config();
             match ResamplingContext::get(
                 audio_decoder.format(),
                 audio_decoder.channel_layout(),
@@ -216,7 +202,7 @@ impl Player {
                             let v = play_ctrl.volume();
                             let samples: Vec<f32> = re_samples_ref.iter().map(|s| s * v).collect();
                             let audio_frame = AudioFrame {
-                                samples: samples.into_iter(),
+                                samples,
                                 channels: frame_resample.channels(),
                                 sample_rate: frame_resample.rate(),
                                 pts,
@@ -404,7 +390,7 @@ impl Player {
     }
 
     fn read_packet_run(&self, mut input: ffmpeg::format::context::Input,
-                       ctx: Context,
+                       ctx: egui::Context,
                        mut video_decoder: Video, audio_deque: kanal::Sender<ffmpeg::Packet>, audio_index: usize,
                        video_deque: kanal::Sender<ffmpeg::Packet>, video_index: usize) {
         let mut play_ctrl = self.play_ctrl.clone();
@@ -492,7 +478,7 @@ impl Player {
                         }
                     }
                 } else {
-                    play_ctrl.set_demux_finished(true);
+                    play_ctrl.set_packet_finished(true);
                     spin_sleep::sleep(PLAY_MIN_INTERVAL);
                 }
             }

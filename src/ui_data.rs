@@ -2,7 +2,7 @@ use std::{fs, path};
 
 use egui::{Event, Key, PointerButton, Ui};
 
-use crate::{Player, PlayerState};
+use crate::player::{Player, PlayerState};
 
 pub struct AppUi {
     collapse: bool,

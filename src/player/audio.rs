@@ -1,13 +1,13 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::vec::IntoIter;
 
 use cpal::SupportedStreamConfig;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
+use crate::player::RingBufferConsumer;
+
 #[derive(Clone)]
 pub struct AudioFrame {
-    pub samples: IntoIter<f32>,
+    pub samples: Vec<f32>,
     pub channels: u16,
     pub sample_rate: u32,
     pub pts: f64,
@@ -23,7 +23,7 @@ impl AudioFrame {
         duration: f64,
     ) -> Self {
         Self {
-            samples: samples.into_iter(),
+            samples,
             channels,
             sample_rate,
             pts,
@@ -51,7 +51,7 @@ pub struct AudioDevice {
 }
 
 impl AudioDevice {
-    pub fn new<T: cpal::SizedSample + Send + 'static>(mut consumer: ringbuf::Consumer<T, Arc<ringbuf::HeapRb<T>>>) -> Result<Self, anyhow::Error> {
+    pub fn new<T: cpal::SizedSample + Send + 'static>(mut consumer: RingBufferConsumer<T>) -> Result<Self, anyhow::Error> {
         let device = cpal::default_host().default_output_device().ok_or(ffmpeg::Error::OptionNotFound)?;
 
         let config = device.default_input_config()?;
@@ -100,7 +100,7 @@ impl AudioDevice {
         self.set_pause(true);
     }
 
-    fn write_audio<T: cpal::Sample>(data: &mut [T], consumer: &mut ringbuf::Consumer<T, Arc<ringbuf::HeapRb<T>>>, _: &cpal::OutputCallbackInfo) {
+    fn write_audio<T: cpal::Sample>(data: &mut [T], consumer: &mut RingBufferConsumer<T>, _: &cpal::OutputCallbackInfo) {
         if consumer.len() >= data.len() {
             consumer.pop_slice(data);
         } else {

@@ -1,15 +1,11 @@
-pub use audio_streamer::*;
-pub use const_v::*;
+pub use audio::*;
+pub use consts::*;
+pub use kits::*;
+pub use play_ctrl::*;
 pub use player::*;
-pub use player_::*;
-pub(super) use streamer::*;
-pub use video_streamer::*;
+pub use video::*;
 
-mod player_;
-mod const_v;
-mod video_streamer;
-mod audio_streamer;
-mod streamer;
+mod kits;
 mod player;
 mod video;
 mod play_ctrl;

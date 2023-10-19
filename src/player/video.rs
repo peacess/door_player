@@ -1,7 +1,5 @@
 use std::fmt::{Debug, Formatter};
 
-use crate::player::player::PlayFrame;
-
 #[derive(Default, Clone)]
 pub struct VideoFrame {
     pub width: usize,
@@ -37,20 +35,5 @@ impl VideoFrame {
             pts,
             duration,
         }
-    }
-}
-
-impl PlayFrame for VideoFrame {
-    fn pts(&self) -> f64 {
-        self.pts
-    }
-
-    fn duration(&self) -> f64 {
-        self.duration
-    }
-
-    fn mem_size(&self) -> usize {
-        //todo
-        self.color_image.pixels.len()
     }
 }
