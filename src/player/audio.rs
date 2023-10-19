@@ -98,11 +98,11 @@ impl AudioDevice {
     pub fn new() -> Result<Self, anyhow::Error> {
         let device = cpal::default_host().default_output_device().ok_or(ffmpeg::Error::OptionNotFound)?;
 
-        let (mut producer,mut consumer) = ringbuf::HeapRb::<f32>::new(8192).split();
+        let (mut producer, mut consumer) = ringbuf::HeapRb::<f32>::new(8192).split();
 
         let config = device.default_input_config()?;
 
-        let stream = device.build_output_stream(&config.clone().into(),move |data: &mut [f32], cbinfo|{
+        let stream = device.build_output_stream(&config.clone().into(), move |data: &mut [f32], cbinfo| {
             Self::write_audio(data, &mut consumer, cbinfo);
         }, |e| {
             log::error!("{}", e);
@@ -137,38 +137,38 @@ impl AudioDevice {
 
     pub fn set_pause(&self, pause: bool) {
         if pause {
-            if let Err(e) = self.stream.pause(){
+            if let Err(e) = self.stream.pause() {
                 log::error!("{}", e);
             }
         } else {
-            if let Err(e) = self.stream.play(){
+            if let Err(e) = self.stream.play() {
                 log::error!("{}", e);
             }
         }
     }
 
     pub fn stop(&self) {
-        if let Err(e) = self.stream.pause(){
+        if let Err(e) = self.stream.pause() {
             log::error!("{}", e);
         }
     }
 
-    fn write_audio<T: cpal::Sample>(data: &mut [T], consumer: &mut ringbuf::Consumer<T,Arc<ringbuf::HeapRb<T>>>, _: &cpal::OutputCallbackInfo) {
-        // if consumer.len() > 2 * 1024 * 1024 {
-        //     consumer.pop_slice(data);
-        // }else {
-        //     for d in data.iter_mut() {
-        //         *d = T::EQUILIBRIUM;
-        //     }
-        // }
-        for d in data {
-            // copy as many samples as we have.
-            // if we run out, write silence
-            match consumer.pop() {
-                Some(sample) => *d = sample,
-                None => *d = T::EQUILIBRIUM // Sample::from(&0.0)
+    fn write_audio<T: cpal::Sample>(data: &mut [T], consumer: &mut ringbuf::Consumer<T, Arc<ringbuf::HeapRb<T>>>, _: &cpal::OutputCallbackInfo) {
+        if consumer.len() >= data.len() {
+            consumer.pop_slice(data);
+        } else {
+            for d in data.iter_mut() {
+                *d = T::EQUILIBRIUM;
             }
         }
+        // for d in data {
+        //     // copy as many samples as we have.
+        //     // if we run out, write silence
+        //     match consumer.pop() {
+        //         Some(sample) => *d = sample,
+        //         None => *d = T::EQUILIBRIUM // Sample::from(&0.0)
+        //     }
+        // }
     }
 }
 

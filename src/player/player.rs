@@ -1,17 +1,17 @@
+use std::ops::{Deref, DerefMut};
 use std::path;
 use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::Ordering;
 
 use egui::{Image, Response, Sense, Ui};
 use egui::load::SizedTexture;
 use ffmpeg::Rational;
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 
-use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE};
-use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioFrame};
+use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::play_ctrl::PlayCtrl;
 use crate::player::video::VideoFrame;
 use crate::PlayerState;
@@ -35,17 +35,13 @@ pub struct Player {
     file_path: String,
     //是否需要停止播放相关线程
     pub play_ctrl: PlayCtrl,
-    pub player_state: Shared<PlayerState>,
-
-    ctx_ref: egui::Context,
-
     pub width: u32,
     pub height: u32,
 }
 
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
-    pub fn new(ctx:&egui::Context, file: &str) -> Result<Player, anyhow::Error> {
+    pub fn new(ctx: &egui::Context, file: &str) -> Result<Player, anyhow::Error> {
         let abort_req = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
         let play_ctrl = {
@@ -53,13 +49,11 @@ impl Player {
             let audio_dev = Arc::new(Mutex::new(audio_dev));
             audio_dev.lock().set_pause(false);
 
-            PlayCtrl::new(audio_dev,  abort_req, Self::default_texture_handle(ctx))
+            PlayCtrl::new(audio_dev, abort_req, Self::default_texture_handle(ctx))
         };
         let mut player = Self {
-            ctx_ref: ctx.clone(),
             file_path: file.to_string(),
             play_ctrl,
-            player_state: Shared::new(PlayerState::Stopped),
             width: 0,
             height: 0,
         };
@@ -86,14 +80,11 @@ impl Player {
             (audio_index, audio_decoder)
         };
 
-        let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(100);
-        let (video_packet_sender, video_packet_receiver) = kanal::bounded(100);
+        let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(AUDIO_PACKET_QUEUE_SIZE);
+        let (video_packet_sender, video_packet_receiver) = kanal::bounded(VIDEO_PACKET_QUEUE_SIZE);
 
         let (audio_frame_tx, audio_frame_rx) = kanal::bounded::<AudioFrame>(AUDIO_FRAME_QUEUE_SIZE);
         let (video_frame_tx, video_frame_rx) = kanal::bounded::<VideoFrame>(VIDEO_FRAME_QUEUE_SIZE);
-        //
-        // let audio_frame_deque = new_deque();
-        // let video_frame_deque = new_deque();
 
         let video_time_base = format_input.stream(video_index).expect("").time_base();
         // .ok_or_else(|| PlayerError::Error(format!("根据 stream_idx 无法获取到 stream")))?
@@ -164,7 +155,7 @@ impl Player {
                 audio_decoder.rate(),
                 to_sample(stream_config.sample_format()),
                 audio_decoder.channel_layout(),
-                stream_config.sample_rate().0
+                stream_config.sample_rate().0,
             ) {
                 Err(e) => {
                     log::error!("{}", e);
@@ -213,7 +204,7 @@ impl Player {
                                 Err(e) => {
                                     log::error!("{}", e);
                                 }
-                                Ok(_) =>{}
+                                Ok(_) => {}
                             }
                         }
                         Err(e) => {
@@ -255,10 +246,6 @@ impl Player {
                 if play_ctrl.abort_req() {
                     break;
                 }
-                if play_ctrl.pause() {
-                    play_ctrl.wait_notify_in_pause();
-                }
-
                 match frame_deque.try_recv() {
                     Err(e) => {
                         log::error!("{}", e);
@@ -278,8 +265,12 @@ impl Player {
 
                 empty_count += 1;
                 if empty_count == 10 {
-                    play_ctrl.set_audio_finished(true);
-                    break;
+                    if play_ctrl.pause() {
+                        empty_count = 0;
+                    } else {
+                        play_ctrl.set_audio_finished(true);
+                        break;
+                    }
                 }
                 spin_sleep::sleep(PLAY_MIN_INTERVAL);
             }
@@ -319,8 +310,8 @@ impl Player {
                                     log::error!("the frame_rate is null");
                                     return;
                                 }
-                                Some(t) =>{
-                                    1.0/ f64::from(t)
+                                Some(t) => {
+                                    1.0 / f64::from(t)
                                 }
                             }
                         };
@@ -332,11 +323,11 @@ impl Player {
                             duration,
                             color_image,
                         };
-                        match video_deque.send(video_frame){
+                        match video_deque.send(video_frame) {
                             Err(e) => {
                                 log::error!("{}", e);
                             }
-                            Ok(_) =>{}
+                            Ok(_) => {}
                         }
                     }
                 }
@@ -357,7 +348,7 @@ impl Player {
         });
     }
 
-    fn video_play_run(&self,ctx: egui::Context, mut frame_deque: Receiver<VideoFrame>) {
+    fn video_play_run(&self, ctx: egui::Context, mut frame_deque: Receiver<VideoFrame>) {
         let mut play_ctrl = self.play_ctrl.clone();
         std::thread::spawn(move || {
             let mut empty_count = 0;
@@ -365,14 +356,13 @@ impl Player {
                 if play_ctrl.abort_req() {
                     break;
                 }
-                match frame_deque.try_recv(){
+                match frame_deque.try_recv() {
                     Err(e) => {
                         log::error!("{}", e);
                     }
                     Ok(None) => {}
-                    Ok(Some(frame)) =>{
-                        play_ctrl.play_video(frame)?;
-                        ctx.request_repaint();
+                    Ok(Some(frame)) => {
+                        play_ctrl.play_video(frame, &ctx)?;
                         empty_count = 0;
                         continue;
                     }
@@ -380,8 +370,12 @@ impl Player {
 
                 empty_count += 1;
                 if empty_count == 10 {
-                    play_ctrl.set_video_finished(true);
-                    break;
+                    if play_ctrl.pause() {
+                        empty_count = 0;
+                    } else {
+                        play_ctrl.set_video_finished(true);
+                        break;
+                    }
                 }
                 spin_sleep::sleep(PLAY_MIN_INTERVAL);
             }
@@ -393,23 +387,33 @@ impl Player {
     fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: kanal::Sender<ffmpeg::Packet>, audio_index: usize,
                        video_deque: kanal::Sender<ffmpeg::Packet>, video_index: usize) {
         let mut play_ctrl = self.play_ctrl.clone();
+        let duration = input.duration();
         std::thread::spawn(move || {
             loop {
                 if play_ctrl.abort_req() {
                     break;
                 }
 
-                if play_ctrl.pause() || audio_deque.is_full() || video_deque.is_full() {
-                    spin_sleep::sleep(Duration::from_millis(20));
-                    continue;
-                }
-
-                if play_ctrl.demux_finished() && play_ctrl.audio_finished() && play_ctrl.video_finished() {
+                if play_ctrl.audio_finished() && play_ctrl.video_finished() {
                     play_ctrl.set_abort_req(true);
                     break;
                 }
 
-                for (s, packet) in input.packets() {
+                let scale = play_ctrl.seek_scale.load(Ordering::Relaxed);
+                if scale > 0.0 {
+                    let seek_pos = (scale * duration as f64) as i64;
+                    if let Err(e) = input.seek(seek_pos, ..seek_pos) {
+                        log::error!("{}", e);
+                    }
+                    play_ctrl.seek(-1.0);
+                } else {
+                    if play_ctrl.pause() || audio_deque.is_full() || video_deque.is_full() {
+                        spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                        continue;
+                    }
+                }
+
+                if let Some((s, packet)) = input.packets().next() {
                     if unsafe { !packet.is_empty() } {
                         if packet.stream() == audio_index {
                             if let Err(e) = audio_deque.send(packet) {
@@ -421,10 +425,10 @@ impl Player {
                             }
                         }
                     }
+                } else {
+                    play_ctrl.set_demux_finished(true);
+                    spin_sleep::sleep(PLAY_MIN_INTERVAL);
                 }
-
-                play_ctrl.set_abort_req(true);
-                spin_sleep::sleep(Duration::from_millis(20));
             }
         });
     }
@@ -450,13 +454,35 @@ impl Player {
         // self.process_state();
         response
     }
-
-    pub fn start(&self){
-
+    pub fn start(&mut self) {
+        self.resume();
     }
+    pub fn pause(&mut self) {
+        self.set_state(PlayerState::Paused);
+    }
+    pub fn resume(&mut self) {
+        self.set_state(PlayerState::Playing);
+    }
+    pub fn stop(&mut self) {
+        self.set_state(PlayerState::Stopped);
+    }
+    // seek in play ctrl
+    fn set_state(&mut self, new_state: PlayerState) {
+        self.player_state.set(new_state);
+    }
+}
 
-    pub fn pause(&self){
+impl Deref for Player {
+    type Target = PlayCtrl;
 
+    fn deref(&self) -> &Self::Target {
+        &self.play_ctrl
+    }
+}
+
+impl DerefMut for Player {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.play_ctrl
     }
 }
 

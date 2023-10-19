@@ -3,12 +3,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use eframe::epaint::TextureHandle;
-use parking_lot::{Condvar, Mutex, RwLock};
+use parking_lot::{Condvar, Mutex};
 
-use crate::player::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
+use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioFrame};
+use crate::player::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
 use crate::player::player::PlayFrame;
 use crate::player::video::VideoFrame;
+use crate::PlayerState;
 
 #[derive(Clone, Default)]
 pub struct Pause {
@@ -32,7 +34,7 @@ impl Pause {
         self.pause_cond.wait(&mut self.pause.lock());
     }
 
-    pub fn notify_all(&self) -> usize {
+    fn notify_all(&self) -> usize {
         self.pause_cond.notify_all()
     }
 }
@@ -76,37 +78,25 @@ impl Clock {
 
 #[derive(Clone)]
 pub struct PlayCtrl {
+    pub player_state: Shared<PlayerState>,
     /// 解码开始时间, 也是音视频的起始时间
     start: Instant,
     /// 取消请求, 在播放完成时, 会设置为true, 则 相关线程就会退出
     abort_req: Arc<AtomicBool>,
-    /// 暂停播放
     pause: Pause,
-    /*
-        解封装
-    */
+    pub seek_scale: Arc<atomic::Atomic<f64>>,
     /// 解封装(取包)完成
-    demux_finished: Arc<AtomicBool>,
-    // /// 视频包解码后得到的视频帧 格式转换后 采集到的RGB数据
-    // video_frame_tx: Sender<VideoFrame>,
+    packet_finished: Arc<AtomicBool>,
     /// 视频播放线程完成
     video_finished: Arc<AtomicBool>,
     /// 控制同步
-    video_clock: Arc<RwLock<Clock>>,
-    /*
-        音频
-    */
-    /// 音频设备
+    video_clock: Arc<Mutex<Clock>>,
     audio_dev: Arc<Mutex<AudioDevice>>,
-    /// 音频播放线程完成
     audio_finished: Arc<AtomicBool>,
-    // /// 音频包解码后得到的音频帧转换成的 音频采样数据
-    // audio_frame_tx: Sender<AudioFrame>,
     /// 音量控制
-    volume: Arc<RwLock<f32>>,
+    volume: Arc<atomic::Atomic<f32>>,
     /// 控制同步
-    audio_clock: Arc<RwLock<Clock>>,
-
+    audio_clock: Arc<Mutex<Clock>>,
     /// The player's texture handle.
     pub texture_handle: egui::TextureHandle,
 }
@@ -121,20 +111,22 @@ impl PlayCtrl {
         let demux_finished = Arc::new(AtomicBool::new(false));
         let audio_finished = Arc::new(AtomicBool::new(false));
         let video_finished = Arc::new(AtomicBool::new(false));
-        let video_clock = Arc::new(RwLock::new(Clock::new(start.clone())));
-        let audio_clock = Arc::new(RwLock::new(Clock::new(start.clone())));
+        let video_clock = Arc::new(Mutex::new(Clock::new(start.clone())));
+        let audio_clock = Arc::new(Mutex::new(Clock::new(start.clone())));
 
         Self {
+            player_state: Shared::new(PlayerState::Stopped),
             start,
             abort_req: abort_request,
             pause: Pause::default(),
-            demux_finished,
+            seek_scale: Arc::new(atomic::Atomic::new(-1.0)),
+            packet_finished: demux_finished,
             video_finished,
             video_clock,
             audio_dev,
             audio_finished,
             audio_clock,
-            volume: Arc::new(RwLock::new(1.0)),
+            volume: Arc::new(atomic::Atomic::new(1.0)),
             texture_handle,
         }
     }
@@ -146,12 +138,16 @@ impl PlayCtrl {
 
     /// 设置音量大小
     pub fn set_volume(&self, volume: f32) {
-        *self.volume.write() = volume;
+        self.volume.store(volume, Ordering::Relaxed);
     }
 
     /// 当前音量
     pub fn volume(&self) -> f32 {
-        *self.volume.read()
+        self.volume.load(Ordering::Relaxed)
+    }
+
+    pub fn seek(&mut self, seek_scale: f64) {
+        self.seek_scale.store(seek_scale, Ordering::Relaxed);
     }
 
     /// 设置是否取消播放
@@ -203,12 +199,12 @@ impl PlayCtrl {
 
     /// 设置解封装播放线程是否完成
     pub fn set_demux_finished(&self, demux_finished: bool) {
-        self.demux_finished.store(demux_finished, Ordering::Relaxed);
+        self.packet_finished.store(demux_finished, Ordering::Relaxed);
     }
 
     /// 解封装播放线程是否完成
     pub fn demux_finished(&self) -> bool {
-        self.demux_finished.load(Ordering::Relaxed)
+        self.packet_finished.load(Ordering::Relaxed)
     }
 
     /// 获取声音设备的默认配置
@@ -228,12 +224,13 @@ impl PlayCtrl {
     }
 
     /// 播放视频帧
-    pub fn play_video(&mut self, frame: VideoFrame) -> Result<(), anyhow::Error> {
+    pub fn play_video(&mut self, frame: VideoFrame, ctx: &egui::Context) -> Result<(), anyhow::Error> {
         // 更新视频时钟
         let delay = self.update_video_clock(frame.pts(), frame.duration());
 
         // 播放
         self.texture_handle.set(frame.color_image, egui::TextureOptions::LINEAR);
+        ctx.request_repaint();
         // match self.send_state(PlayState::Video(frame)) {
         //     Ok(_) => {}
         //     Err(SendError::Closed) | Err(SendError::ReceiveClosed) => {
@@ -246,25 +243,25 @@ impl PlayCtrl {
     }
 
     pub fn current_audio_clock(&self) -> f64 {
-        self.audio_clock.write().current()
+        self.audio_clock.lock().current()
     }
 
     #[inline]
     fn update_audio_clock(&self, pts: f64, duration: f64) -> f64 {
-        let mut clock = self.audio_clock.write();
+        let mut clock = self.audio_clock.lock();
         clock.update(pts, duration);
         duration
     }
 
     fn update_video_clock(&self, pts: f64, duration: f64) -> f64 {
-        self.video_clock.write().update(pts, duration);
+        self.video_clock.lock().update(pts, duration);
         self.compute_video_delay()
     }
 
     fn compute_video_delay(&self) -> f64 {
-        let audio_clock = self.audio_clock.read().current();
-        let video_clock = self.video_clock.read().current();
-        let duration = self.video_clock.read().duration();
+        let audio_clock = self.audio_clock.lock().current();
+        let video_clock = self.video_clock.lock().current();
+        let duration = self.video_clock.lock().duration();
         let diff = video_clock - audio_clock;
         // 视频时钟落后于音频时钟, 超过了最小阈值
         if diff <= VIDEO_SYNC_THRESHOLD_MIN {
