@@ -1,6 +1,6 @@
 use ffmpeg::{Rational, rescale, Rescale};
 
-use crate::{is_ffmpeg_eof_error, MILLISEC_TIME_BASE, PlayerState};
+use crate::{is_ffmpeg_eof_error, MILLISEC_TIME_BASE, PlayerState, timestamp_to_millisecond};
 use crate::kits::Shared;
 
 /// Streams data.
@@ -152,10 +152,6 @@ fn millisecond_approx_eq(a: i64, b: i64) -> bool {
     a.abs_diff(b) < 50
 }
 
-
-pub fn timestamp_to_millisecond(timestamp: i64, time_base: Rational) -> i64 {
-    timestamp.rescale(time_base, MILLISEC_TIME_BASE)
-}
 
 fn millisecond_to_timestamp(millisecond: i64, time_base: Rational) -> i64 {
     millisecond.rescale(MILLISEC_TIME_BASE, time_base)

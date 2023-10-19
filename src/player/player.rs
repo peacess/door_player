@@ -1,9 +1,13 @@
+use std::default::Default;
 use std::ops::{Deref, DerefMut};
 use std::path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::time::{Duration, UNIX_EPOCH};
+use chrono::{DateTime, Utc};
 
-use egui::{Context, Image, Response, Sense, Ui};
+use egui::{Align2, Color32, Context, FontId, Image, Rect, Response, Rounding, Sense, Spinner, Ui, vec2, Vec2};
+use egui::epaint::Shadow;
 use egui::load::SizedTexture;
 use ffmpeg::decoder::Video;
 use ffmpeg::{Rational, Rescale, rescale};
@@ -14,7 +18,9 @@ use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::play_ctrl::PlayCtrl;
 use crate::player::video::VideoFrame;
-use crate::PlayerState;
+use crate::{AV_TIME_BASE_RATIONAL, PlayerState};
+use crate::kits::Shared;
+use crate::player::const_v::timestamp_to_millisecond;
 
 // use ffmpeg::format::Sample;
 
@@ -37,24 +43,42 @@ pub struct Player {
     pub play_ctrl: PlayCtrl,
     pub width: u32,
     pub height: u32,
+
+    pub audio_volume: Shared<f32>,
+    pub max_audio_volume: f32,
+    duration_ms: i64,
+    last_seek_ms: Option<i64>,
+    // pre_seek_player_state: Option<PlayerState>,
+    #[cfg(feature = "from_bytes")]
+    temp_file: Option<NamedTempFile>,
+    video_elapsed_ms_override: Option<i64>,
 }
 
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
     pub fn new(ctx: &egui::Context, file: &str) -> Result<Player, anyhow::Error> {
+        let max_audio_volume = 1.;
         let play_ctrl = {
             let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8192).split();
             let audio_dev = Arc::new(AudioDevice::new(consumer)?);
             PlayCtrl::new(producer, audio_dev, Self::default_texture_handle(ctx))
         };
+
+
+
+        //打开文件
+        let format_input = ffmpeg::format::input(&path::Path::new(file))?;
         let mut player = Self {
             file_path: file.to_string(),
             play_ctrl,
             width: 0,
             height: 0,
+            audio_volume: Shared::new(max_audio_volume / 2.),
+            max_audio_volume,
+            duration_ms: timestamp_to_millisecond(format_input.duration(), AV_TIME_BASE_RATIONAL),
+            last_seek_ms: None,
+            video_elapsed_ms_override: None,
         };
-        //打开文件
-        let format_input = ffmpeg::format::input(&path::Path::new(file))?;
 
         // 获取视频解码器
         let (video_index, video_decoder, video_decoder2) = {
@@ -450,13 +474,19 @@ impl Player {
                     }
                 }
 
-                if let Some((_, packet)) = input.packets().next() {
+                if let Some((stream, packet)) = input.packets().next() {
                     if unsafe { !packet.is_empty() } {
                         if packet.stream() == audio_index {
+                            if let Some(dts) = packet.dts() {
+                                play_ctrl.audio_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
+                            }
                             if let Err(e) = audio_deque.send(packet) {
                                 log::error!("{}", e);
                             }
                         } else if packet.stream() == video_index {
+                            if let Some(dts) = packet.dts() {
+                                play_ctrl.video_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
+                            }
                             if let Err(e) = video_deque.send(packet) {
                                 log::error!("{}", e);
                             }
@@ -487,10 +517,291 @@ impl Player {
     pub fn ui(&mut self, ui: &mut Ui, size: [f32; 2]) -> Response {
         let image = Image::new(SizedTexture::new(self.play_ctrl.texture_handle.id(), size)).sense(Sense::click());
         let response = ui.add(image);
-        // self.render_ui(ui, &response);
-        // self.process_state();
+        self.render_ui(ui, &response);
+        self.process_state();
         response
     }
+    fn render_ui(&mut self, ui: &mut Ui, image_res: &Response) -> Option<Rect> {
+        let hovered = ui.rect_contains_pointer(image_res.rect);
+        let currently_seeking = matches!(self.player_state.get(), PlayerState::Seeking(_));
+        let is_stopped = matches!(self.player_state.get(), PlayerState::Stopped);
+        let is_paused = matches!(self.player_state.get(), PlayerState::Paused);
+        let seekbar_anim_frac = ui.ctx().animate_bool_with_time(
+            image_res.id.with("seekbar_anim"),
+            hovered || currently_seeking || is_paused || is_stopped,
+            0.2,
+        );
+
+        if seekbar_anim_frac > 0. {
+            let seekbar_width_offset = 20.;
+            let full_seek_bar_width = image_res.rect.width() - seekbar_width_offset;
+
+            let seekbar_width = full_seek_bar_width * self.duration_frac();
+
+            let seekbar_offset = 20.;
+            let seekbar_pos = image_res.rect.left_bottom()
+                + vec2(seekbar_width_offset / 2., -seekbar_offset);
+            let seekbar_height = 3.;
+            let mut full_seek_bar_rect =
+                Rect::from_min_size(seekbar_pos, vec2(full_seek_bar_width, seekbar_height));
+
+            let mut seekbar_rect =
+                Rect::from_min_size(seekbar_pos, vec2(seekbar_width, seekbar_height));
+            let seekbar_interact_rect = full_seek_bar_rect.expand(10.);
+            ui.interact(seekbar_interact_rect, image_res.id, Sense::drag());
+
+            let seekbar_response = ui.interact(
+                seekbar_interact_rect,
+                image_res.id.with("seekbar"),
+                Sense::click_and_drag(),
+            );
+
+            let seekbar_hovered = seekbar_response.hovered();
+            let seekbar_hover_anim_frac = ui.ctx().animate_bool_with_time(
+                image_res.id.with("seekbar_hover_anim"),
+                seekbar_hovered || currently_seeking,
+                0.2,
+            );
+
+            if seekbar_hover_anim_frac > 0. {
+                let new_top = full_seek_bar_rect.top() - (3. * seekbar_hover_anim_frac);
+                full_seek_bar_rect.set_top(new_top);
+                seekbar_rect.set_top(new_top);
+            }
+
+            let seek_indicator_anim = ui.ctx().animate_bool_with_time(
+                image_res.id.with("seek_indicator_anim"),
+                currently_seeking,
+                0.1,
+            );
+
+            if currently_seeking {
+                let mut seek_indicator_shadow = Shadow::big_dark();
+                seek_indicator_shadow.color = seek_indicator_shadow
+                    .color
+                    .linear_multiply(seek_indicator_anim);
+                let spinner_size = 20. * seek_indicator_anim;
+                ui.painter().add(
+                    seek_indicator_shadow.tessellate(image_res.rect, Rounding::ZERO),
+                );
+                ui.put(
+                    Rect::from_center_size(
+                        image_res.rect.center(),
+                        Vec2::splat(spinner_size),
+                    ),
+                    Spinner::new().size(spinner_size),
+                );
+            }
+
+            if seekbar_hovered || currently_seeking {
+                if let Some(hover_pos) = seekbar_response.hover_pos() {
+                    if seekbar_response.clicked() || seekbar_response.dragged() {
+                        let seek_frac = ((hover_pos - image_res.rect.left_top()).x
+                            - seekbar_width_offset / 2.)
+                            .max(0.)
+                            .min(full_seek_bar_width)
+                            / full_seek_bar_width;
+                        seekbar_rect.set_right(
+                            hover_pos
+                                .x
+                                .min(full_seek_bar_rect.right())
+                                .max(full_seek_bar_rect.left()),
+                        );
+                        if is_stopped {
+                            self.start()
+                        }
+                        self.seek(seek_frac as f64);
+                    }
+                }
+            }
+            let text_color = Color32::WHITE.linear_multiply(seekbar_anim_frac);
+
+            let pause_icon = if is_paused {
+                "▶"
+            } else if is_stopped {
+                "◼"
+            } else if currently_seeking {
+                "↔"
+            } else {
+                "⏸"
+            };
+            let audio_volume_frac = self.audio_volume.get() / self.max_audio_volume;
+            let sound_icon = if audio_volume_frac > 0.7 {
+                "🔊"
+            } else if audio_volume_frac > 0.4 {
+                "🔉"
+            } else if audio_volume_frac > 0. {
+                "🔈"
+            } else {
+                "🔇"
+            };
+            let mut icon_font_id = FontId::default();
+            icon_font_id.size = 16.;
+
+            let text_y_offset = -7.;
+            let sound_icon_offset = vec2(-5., text_y_offset);
+            let sound_icon_pos = full_seek_bar_rect.right_top() + sound_icon_offset;
+
+            let pause_icon_offset = vec2(3., text_y_offset);
+            let pause_icon_pos = full_seek_bar_rect.left_top() + pause_icon_offset;
+
+            let duration_text_offset = vec2(25., text_y_offset);
+            let duration_text_pos = full_seek_bar_rect.left_top() + duration_text_offset;
+            let mut duration_text_font_id = FontId::default();
+            duration_text_font_id.size = 14.;
+
+            let mut shadow = Shadow::big_light();
+            shadow.color = shadow.color.linear_multiply(seekbar_anim_frac);
+
+            let mut shadow_rect = image_res.rect;
+            shadow_rect.set_top(shadow_rect.bottom() - seekbar_offset - 10.);
+            let shadow_mesh = shadow.tessellate(shadow_rect, Rounding::ZERO);
+
+            let full_seek_bar_color = Color32::GRAY.linear_multiply(seekbar_anim_frac);
+            let seekbar_color = Color32::WHITE.linear_multiply(seekbar_anim_frac);
+
+            ui.painter().add(shadow_mesh);
+
+            ui.painter().rect_filled(
+                full_seek_bar_rect,
+                Rounding::ZERO,
+                full_seek_bar_color.linear_multiply(0.5),
+            );
+            ui.painter()
+                .rect_filled(seekbar_rect, Rounding::ZERO, seekbar_color);
+            ui.painter().text(
+                pause_icon_pos,
+                Align2::LEFT_BOTTOM,
+                pause_icon,
+                icon_font_id.clone(),
+                text_color,
+            );
+
+            ui.painter().text(
+                duration_text_pos,
+                Align2::LEFT_BOTTOM,
+                self.duration_text(),
+                duration_text_font_id,
+                text_color,
+            );
+
+            if seekbar_hover_anim_frac > 0. {
+                ui.painter().circle_filled(
+                    seekbar_rect.right_center(),
+                    7. * seekbar_hover_anim_frac,
+                    seekbar_color,
+                );
+            }
+
+            if image_res.clicked() {
+                let mut reset_stream = false;
+                let mut start_stream = false;
+
+                match self.player_state.get() {
+                    PlayerState::Stopped => start_stream = true,
+                    PlayerState::EndOfFile => reset_stream = true,
+                    PlayerState::Paused => self.player_state.set(PlayerState::Playing),
+                    PlayerState::Playing => self.player_state.set(PlayerState::Paused),
+                    _ => (),
+                }
+
+                if reset_stream {
+                    self.reset();
+                    self.resume();
+                } else if start_stream {
+                    self.start();
+                }
+            }
+
+            {
+                let sound_icon_rect = ui.painter().text(
+                    sound_icon_pos,
+                    Align2::RIGHT_BOTTOM,
+                    sound_icon,
+                    icon_font_id.clone(),
+                    text_color,
+                );
+
+                if ui
+                    .interact(
+                        sound_icon_rect,
+                        image_res.id.with("sound_icon_sense"),
+                        Sense::click(),
+                    )
+                    .clicked()
+                {
+                    if self.audio_volume.get() != 0. {
+                        self.audio_volume.set(0.)
+                    } else {
+                        self.audio_volume.set(self.max_audio_volume / 2.)
+                    }
+                }
+
+                let sound_slider_outer_height = 75.;
+                let sound_slider_margin = 5.;
+                let sound_slider_opacity = 100;
+                let mut sound_slider_rect = sound_icon_rect;
+                sound_slider_rect.set_bottom(sound_icon_rect.top() - sound_slider_margin);
+                sound_slider_rect.set_top(sound_slider_rect.top() - sound_slider_outer_height);
+
+                let sound_slider_interact_rect = sound_slider_rect.expand(sound_slider_margin);
+                let sound_hovered = ui.rect_contains_pointer(sound_icon_rect);
+                let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_interact_rect);
+                let sound_anim_id = image_res.id.with("sound_anim");
+                let mut sound_anim_frac: f32 = ui
+                    .ctx()
+                    .memory_mut(|m| *m.data.get_temp_mut_or_default(sound_anim_id));
+                sound_anim_frac = ui.ctx().animate_bool_with_time(
+                    sound_anim_id,
+                    sound_hovered || (sound_slider_hovered && sound_anim_frac > 0.),
+                    0.2,
+                );
+                ui.ctx()
+                    .memory_mut(|m| m.data.insert_temp(sound_anim_id, sound_anim_frac));
+                let sound_slider_bg_color = Color32::from_black_alpha(sound_slider_opacity)
+                    .linear_multiply(sound_anim_frac);
+                let sound_bar_color = Color32::from_white_alpha(sound_slider_opacity)
+                    .linear_multiply(sound_anim_frac);
+                let mut sound_bar_rect = sound_slider_rect;
+                sound_bar_rect.set_top(
+                    sound_bar_rect.bottom()
+                        - (self.audio_volume.get() / self.max_audio_volume)
+                        * sound_bar_rect.height(),
+                );
+
+                ui.painter().rect_filled(
+                    sound_slider_rect,
+                    Rounding::same(5.),
+                    sound_slider_bg_color,
+                );
+
+                ui.painter()
+                    .rect_filled(sound_bar_rect, Rounding::same(5.), sound_bar_color);
+                let sound_slider_resp = ui.interact(
+                    sound_slider_rect,
+                    image_res.id.with("sound_slider_sense"),
+                    Sense::click_and_drag(),
+                );
+                if sound_anim_frac > 0. && sound_slider_resp.clicked()
+                    || sound_slider_resp.dragged()
+                {
+                    if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
+                        let sound_frac = 1.
+                            - ((hover_pos - sound_slider_rect.left_top()).y
+                            / sound_slider_rect.height())
+                            .max(0.)
+                            .min(1.);
+                        self.audio_volume.set(sound_frac * self.max_audio_volume);
+                    }
+                }
+            }
+
+            Some(seekbar_interact_rect)
+        } else {
+            None
+        }
+    }
+
     pub fn start(&mut self) {
         self.resume();
     }
@@ -503,6 +814,11 @@ impl Player {
     pub fn stop(&mut self) {
         self.set_state(PlayerState::Stopped);
     }
+
+    pub fn reset(&mut self){
+        self.seek(0.0);
+    }
+
     // seek in play ctrl
     fn set_state(&mut self, new_state: PlayerState) {
         match new_state {
@@ -524,6 +840,71 @@ impl Player {
             }
         }
         self.player_state.set(new_state);
+    }
+
+
+
+    fn elapsed_ms(&self) -> i64 {
+        self.video_elapsed_ms_override
+            .as_ref()
+            .map(|i| *i)
+            .unwrap_or(self.video_elapsed_ms.get())
+    }
+    fn duration_frac(&mut self) -> f32 {
+        self.elapsed_ms() as f32 / self.duration_ms as f32
+    }
+
+    pub fn duration_text(&mut self) -> String {
+        format!(
+            "{} / {}",
+            Self::format_duration(chrono::Duration::milliseconds(self.elapsed_ms())),
+            Self::format_duration(chrono::Duration::milliseconds(self.duration_ms))
+        )
+    }
+    fn format_duration(dur: chrono::Duration) -> String {
+        let dt = DateTime::<Utc>::from(UNIX_EPOCH) + dur;
+        if dt.format("%H").to_string().parse::<i64>().unwrap() > 0 {
+            dt.format("%H:%M:%S").to_string()
+        } else {
+            dt.format("%M:%S").to_string()
+        }
+    }
+
+    fn process_state(&mut self) {
+        let mut reset_stream = false;
+
+        match self.player_state.get() {
+            PlayerState::EndOfFile => {
+                self.player_state.set(PlayerState::Stopped);
+            }
+            PlayerState::Stopped => {
+                //todo
+            }
+            PlayerState::Seeking(seek_in_progress) => {
+                if self.last_seek_ms.is_some() {
+                    // let video_elapsed_ms = self.video_elapsed_ms.get();
+                    let last_seek_ms = *self.last_seek_ms.as_ref().unwrap();
+                    // if (millisecond_approx_eq(video_elapsed_ms, last_seek_ms) || video_elapsed_ms == 0)
+                    if !seek_in_progress {
+                        // if let Some(previous_player_state) = self.pre_seek_player_state {
+                        //     self.set_state(previous_player_state)
+                        // }
+                        self.video_elapsed_ms_override = None;
+                        self.last_seek_ms = None;
+                    } else {
+                        self.video_elapsed_ms_override = Some(last_seek_ms);
+                    }
+                } else {
+                    self.video_elapsed_ms_override = None;
+                }
+            }
+            PlayerState::Restarting => reset_stream = true,
+            _ => (),
+        }
+
+        if reset_stream {
+            self.reset();
+        }
     }
 }
 

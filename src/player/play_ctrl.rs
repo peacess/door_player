@@ -72,6 +72,9 @@ pub struct PlayCtrl {
     /// The player's texture handle.
     pub texture_handle: egui::TextureHandle,
     producer: Arc<Mutex<ringbuf::Producer<f32, Arc<ringbuf::HeapRb<f32>>>>>,
+
+    pub video_elapsed_ms: Shared<i64>,
+    pub audio_elapsed_ms: Shared<i64>,
 }
 
 impl PlayCtrl {
@@ -100,6 +103,8 @@ impl PlayCtrl {
             volume: Arc::new(atomic::Atomic::new(1.0)),
             texture_handle,
             producer: Arc::new(Mutex::new(producer)),
+            video_elapsed_ms: Shared::new(0),
+            audio_elapsed_ms: Shared::new(0),
         }
     }
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytemuck::NoUninit;
 use egui::ColorImage;
 use ffmpeg::ffi::AV_TIME_BASE;
-use ffmpeg::Rational;
+use ffmpeg::{Rational, Rescale};
 use ringbuf::SharedRb;
 use sdl2::audio::{self};
 
@@ -45,4 +45,8 @@ pub fn is_ffmpeg_eof_error(error: &anyhow::Error) -> bool {
         error.downcast_ref::<ffmpeg::Error>(),
         Some(ffmpeg::Error::Eof)
     )
+}
+
+pub fn timestamp_to_millisecond(timestamp: i64, time_base: Rational) -> i64 {
+    timestamp.rescale(time_base, MILLISEC_TIME_BASE)
 }
