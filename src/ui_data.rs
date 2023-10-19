@@ -193,7 +193,7 @@ impl Default for AppUi {
             collapse: true,
             player: None,
             media_path: String::default(),
-            no_scale: true,
+            no_scale: false,
             // stream_size_scale: 1.0,
             // seek_frac: 0.0,
         }

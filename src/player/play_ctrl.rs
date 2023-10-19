@@ -84,7 +84,7 @@ pub struct PlayCtrl {
     pub(crate) audio_dev: Arc<AudioDevice>,
     audio_finished: Arc<AtomicBool>,
     /// 音量控制
-    volume: Arc<atomic::Atomic<f32>>,
+    pub audio_volume: Shared<f32>,
     /// 控制同步
     audio_clock: Arc<Mutex<Clock>>,
     /// The player's texture handle.
@@ -118,7 +118,7 @@ impl PlayCtrl {
             audio_dev,
             audio_finished,
             audio_clock,
-            volume: Arc::new(atomic::Atomic::new(1.0)),
+            audio_volume: Shared::new(0.5),
             texture_handle,
             producer: Arc::new(Mutex::new(producer)),
             video_elapsed_ms: Shared::new(0),
@@ -129,13 +129,6 @@ impl PlayCtrl {
     pub fn set_mute(&self, mute: bool) {
         self.audio_dev.set_mute(mute);
     }
-    pub fn set_volume(&self, volume: f32) {
-        self.volume.store(volume, Ordering::Relaxed);
-    }
-    pub fn volume(&self) -> f32 {
-        self.volume.load(Ordering::Relaxed)
-    }
-
     pub fn seek(&mut self, seek_scale: f64) {
         self.seek_scale.store(seek_scale, Ordering::Relaxed);
     }

@@ -14,7 +14,6 @@ use ffmpeg::decoder::Video;
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
-use crate::kits::Shared;
 use crate::player::{AV_TIME_BASE_RATIONAL, PlayerState};
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
@@ -30,7 +29,6 @@ pub struct Player {
     pub width: u32,
     pub height: u32,
 
-    pub audio_volume: Shared<f32>,
     pub max_audio_volume: f32,
     duration_ms: i64,
     last_seek_ms: Option<i64>,
@@ -58,7 +56,6 @@ impl Player {
             play_ctrl,
             width: 0,
             height: 0,
-            audio_volume: Shared::new(max_audio_volume / 2.),
             max_audio_volume,
             duration_ms: timestamp_to_millisecond(format_input.duration(), AV_TIME_BASE_RATIONAL),
             last_seek_ms: None,
@@ -199,7 +196,7 @@ impl Player {
                             };
                             let pts = frame_old.pts().expect("") as f64 / frame_old.rate() as f64;
                             let duration = frame_old.samples() as f64 / frame_old.rate() as f64;
-                            let v = play_ctrl.volume();
+                            let v = play_ctrl.audio_volume.get();
                             let samples: Vec<f32> = re_samples_ref.iter().map(|s| s * v).collect();
                             let audio_frame = AudioFrame {
                                 samples,
@@ -611,7 +608,9 @@ impl Player {
                 "⏸"
             };
             let audio_volume_frac = self.audio_volume.get() / self.max_audio_volume;
-            let sound_icon = if audio_volume_frac > 0.7 {
+            let sound_icon = if self.get_mute() {
+                "🔇"
+            } else if audio_volume_frac > 0.7 {
                 "🔊"
             } else if audio_volume_frac > 0.4 {
                 "🔉"
@@ -715,11 +714,8 @@ impl Player {
                     )
                     .clicked()
                 {
-                    if self.audio_volume.get() != 0. {
-                        self.audio_volume.set(0.)
-                    } else {
-                        self.audio_volume.set(self.max_audio_volume / 2.)
-                    }
+                    let mute = self.get_mute();
+                    self.set_mute(!mute);
                 }
 
                 let sound_slider_outer_height = 75.;
@@ -802,6 +798,14 @@ impl Player {
 
     pub fn reset(&mut self) {
         self.seek(0.0);
+    }
+
+    pub fn get_mute(&self) -> bool {
+        self.audio_dev.get_mute()
+    }
+
+    pub fn set_mute(&mut self, mute: bool) {
+        self.audio_dev.set_mute(mute);
     }
 
     // seek in play ctrl
