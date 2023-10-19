@@ -3,24 +3,24 @@ use std::ops::{Deref, DerefMut};
 use std::path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, UNIX_EPOCH};
-use chrono::{DateTime, Utc};
+use std::time::UNIX_EPOCH;
 
+use chrono::{DateTime, Utc};
 use egui::{Align2, Color32, Context, FontId, Image, Rect, Response, Rounding, Sense, Spinner, Ui, vec2, Vec2};
 use egui::epaint::Shadow;
 use egui::load::SizedTexture;
-use ffmpeg::decoder::Video;
 use ffmpeg::{Rational, Rescale, rescale};
+use ffmpeg::decoder::Video;
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
+use crate::{AV_TIME_BASE_RATIONAL, PlayerState};
+use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioFrame};
+use crate::player::const_v::timestamp_to_millisecond;
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::play_ctrl::PlayCtrl;
 use crate::player::video::VideoFrame;
-use crate::{AV_TIME_BASE_RATIONAL, PlayerState};
-use crate::kits::Shared;
-use crate::player::const_v::timestamp_to_millisecond;
 
 // use ffmpeg::format::Sample;
 
@@ -63,7 +63,6 @@ impl Player {
             let audio_dev = Arc::new(AudioDevice::new(consumer)?);
             PlayCtrl::new(producer, audio_dev, Self::default_texture_handle(ctx))
         };
-
 
 
         //打开文件
@@ -815,7 +814,7 @@ impl Player {
         self.set_state(PlayerState::Stopped);
     }
 
-    pub fn reset(&mut self){
+    pub fn reset(&mut self) {
         self.seek(0.0);
     }
 
@@ -841,7 +840,6 @@ impl Player {
         }
         self.player_state.set(new_state);
     }
-
 
 
     fn elapsed_ms(&self) -> i64 {

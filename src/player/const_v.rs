@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use bytemuck::NoUninit;
 use egui::ColorImage;
-use ffmpeg::ffi::AV_TIME_BASE;
 use ffmpeg::{Rational, Rescale};
+use ffmpeg::ffi::AV_TIME_BASE;
 use ringbuf::SharedRb;
 use sdl2::audio::{self};
 
