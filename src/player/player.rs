@@ -3,9 +3,10 @@ use std::path;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use egui::{Image, Response, Sense, Ui};
+use egui::{Context, Image, Response, Sense, Ui};
 use egui::load::SizedTexture;
-use ffmpeg::Rational;
+use ffmpeg::decoder::Video;
+use ffmpeg::{Rational, Rescale, rescale};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
@@ -56,14 +57,17 @@ impl Player {
         let format_input = ffmpeg::format::input(&path::Path::new(file))?;
 
         // 获取视频解码器
-        let (video_index, video_decoder) = {
+        let (video_index, video_decoder, video_decoder2) = {
             let video_stream = format_input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
             let video_index = video_stream.index();
             let video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
             let video_decoder = video_context.decoder().video()?;
+            let video_decoder2 = {
+                ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?.decoder().video()?
+            };
             player.width = video_decoder.width();
             player.height = video_decoder.height();
-            (video_index, video_decoder)
+            (video_index, video_decoder, video_decoder2)
         };
 
         // 获取音频解码器
@@ -94,7 +98,7 @@ impl Player {
         //开启 视频播放
         player.video_play_run(ctx.clone(), video_frame_rx);
         //开启 读frame线程
-        player.read_packet_run(format_input, audio_packet_sender, audio_index,
+        player.read_packet_run(format_input, ctx.clone(), video_decoder2, audio_packet_sender, audio_index,
                                video_packet_sender, video_index);
 
         // player.play_ctrl.set_pause(false);
@@ -376,11 +380,52 @@ impl Player {
         });
     }
 
-    fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: kanal::Sender<ffmpeg::Packet>, audio_index: usize,
+    fn read_packet_run(&self, mut input: ffmpeg::format::context::Input,
+                       ctx: Context,
+                       mut video_decoder: Video, audio_deque: kanal::Sender<ffmpeg::Packet>, audio_index: usize,
                        video_deque: kanal::Sender<ffmpeg::Packet>, video_index: usize) {
         let mut play_ctrl = self.play_ctrl.clone();
         let duration = input.duration();
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
+            //get first video frame, and refresh window
+            loop {
+                if let Some((_, packet)) = input.packets().next() {
+                    if unsafe { packet.is_empty() || packet.stream() != video_index } {
+                        continue;
+                    }
+
+                    if let Err(e) = video_decoder.0.send_packet(&packet) {
+                        log::error!("{}", e);
+                        break;
+                    }
+                    let mut frame = ffmpeg::frame::Video::empty();
+                    match video_decoder.receive_frame(&mut frame) {
+                        Err(e) => {
+                            log::error!("{}", e);
+                        }
+                        Ok(_) => {
+                            let color_image = match Self::frame_to_color_image(&frame) {
+                                Err(e) => {
+                                    break;
+                                }
+                                Ok(t) => t,
+                            };
+                            play_ctrl.texture_handle.set(color_image, egui::TextureOptions::LINEAR);
+                            ctx.request_repaint();
+                            break;
+                        }
+                    }
+                }
+            }
+            {
+                let beginning: i64 = 0;
+                let beginning_seek = beginning.rescale((1, 1), rescale::TIME_BASE);
+                let _ = input.seek(beginning_seek, ..beginning_seek);
+                video_decoder.flush();
+                drop(video_decoder);
+                drop(ctx);
+            }
+
             loop {
                 if play_ctrl.player_state.get() == PlayerState::Stopped {
                     break;
