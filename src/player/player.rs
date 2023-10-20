@@ -14,7 +14,7 @@ use ffmpeg::decoder::Video;
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
-use crate::player::{AV_TIME_BASE_RATIONAL, PlayerState};
+use crate::player::{AV_TIME_BASE_RATIONAL, MAX_DIFF_MOVE_MOUSE, PacketFrame, PlayerState};
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::kits::timestamp_to_millisecond;
@@ -31,10 +31,10 @@ pub struct Player {
     pub max_audio_volume: f32,
     pub duration_ms: i64,
     last_seek_ms: Option<i64>,
-    // pre_seek_player_state: Option<PlayerState>,
-    #[cfg(feature = "from_bytes")]
-    temp_file: Option<NamedTempFile>,
     video_elapsed_ms_override: Option<i64>,
+
+    /// mouse move ts, compute if show the status bar
+    pub mouth_move_ts: i64,
 }
 
 impl Player {
@@ -57,6 +57,7 @@ impl Player {
             duration_ms: timestamp_to_millisecond(format_input.duration(), AV_TIME_BASE_RATIONAL),
             last_seek_ms: None,
             video_elapsed_ms_override: None,
+            mouth_move_ts: chrono::Utc::now().timestamp_millis(),
         };
 
         // 获取视频解码器
@@ -109,8 +110,8 @@ impl Player {
     }
 
     pub fn default_texture_handle(ctx: &egui::Context) -> egui::TextureHandle {
-        let texture_options = egui::TextureOptions::LINEAR;
-        let texture_handle = ctx.load_texture("video_stream_default", egui::ColorImage::example(), texture_options);
+        let img = egui::ColorImage::new([124, 124], Color32::TRANSPARENT);
+        let texture_handle = ctx.load_texture("video_stream_default", img, egui::TextureOptions::LINEAR);
         texture_handle
     }
 
@@ -376,6 +377,18 @@ impl Player {
                     log::info!("video play exit");
                     break;
                 }
+
+                if play_ctrl.next_packet_frame.get() == PacketFrame::Frame {
+                    play_ctrl.next_packet_frame.set(PacketFrame::None);
+                    for _ in 1..play_ctrl.next_amount.get() {
+                        loop {
+                            if let Ok(Some(_)) = frame_deque.try_recv() {
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 match frame_deque.try_recv() {
                     Err(e) => {
                         log::error!("{}", e);
@@ -452,19 +465,32 @@ impl Player {
                 drop(video_decoder);
                 drop(ctx);
             }
+            // end first frame
 
-            loop {
+            'PACKETS: loop {
                 if play_ctrl.player_state.get() == PlayerState::Stopped {
+                    log::info!("read packet exit");
                     break;
                 }
 
                 if play_ctrl.audio_finished() && play_ctrl.video_finished() {
                     play_ctrl.player_state.set(PlayerState::Stopped);
+                    log::info!("read packet exit");
                     break;
                 }
 
                 let scale = play_ctrl.seek_scale.load(Ordering::Relaxed);
-                if scale > 0.0 {
+                let state = play_ctrl.player_state.get();
+                let next_ = play_ctrl.next_packet_frame.get();
+                let next_count = play_ctrl.next_amount.get();
+                if next_ == PacketFrame::Packet && next_count > 0 {
+                    play_ctrl.next_packet_frame.set(PacketFrame::None);
+                    for _ in 1..next_count {
+                        if let None = input.packets().next() {
+                            break;
+                        }
+                    }
+                } else if scale > 0.0 {
                     let seek_pos = (scale * duration as f64) as i64;
                     if let Err(e) = input.seek(seek_pos, ..seek_pos) {
                         log::error!("{}", e);
@@ -476,7 +502,7 @@ impl Player {
                     let _ = video_deque.send(None);
                     let _ = video_deque.send(None);
                 } else {
-                    if play_ctrl.player_state.get() == PlayerState::Paused || audio_deque.is_full() || video_deque.is_full() {
+                    if state == PlayerState::Paused || audio_deque.is_full() || video_deque.is_full() {
                         spin_sleep::sleep(PLAY_MIN_INTERVAL);
                         continue;
                     }
@@ -503,6 +529,7 @@ impl Player {
                 } else {
                     play_ctrl.set_packet_finished(true);
                     spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                    continue 'PACKETS;
                 }
             }
         });
@@ -540,7 +567,15 @@ impl Player {
             0.2,
         );
 
-        if seekbar_anim_frac > 0. {
+        {
+            ui.input(|e| {
+                if e.pointer.is_moving() {
+                    self.mouth_move_ts = chrono::Utc::now().timestamp_millis();
+                }
+            });
+        };
+
+        if self.show_seekbar() && seekbar_anim_frac > 0. {
             let seekbar_width_offset = 20.;
             let full_seek_bar_width = image_res.rect.width() - seekbar_width_offset;
 
@@ -744,7 +779,7 @@ impl Player {
                     self.set_mute(!mute);
                 }
 
-                let sound_slider_outer_height = 75.;
+                let sound_slider_outer_height = 496.;
                 let sound_slider_margin = 5.;
                 let sound_slider_opacity = 100;
                 let mut sound_slider_rect = sound_icon_rect;
@@ -805,6 +840,7 @@ impl Player {
 
             Some(seekbar_interact_rect)
         } else {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::None);
             None
         }
     }
@@ -822,8 +858,27 @@ impl Player {
         self.set_state(PlayerState::Stopped);
     }
 
+    // seek in play ctrl
     pub fn reset(&mut self) {
         self.seek(0.0);
+    }
+
+    /// 此方法最好在 [PlayerState::Paused] 时使用。
+    /// 如值为1： 当前是在3号packet frame, 那么它会跳过当前3号，显示4号frame packet,  4-3 = 1。
+    /// 如值为-1: 当前是在3号packet frame, 那么它会跳过当前3号，显示2号frame packet。这个功能现在还不支持。
+    /// 注： 由于dts(Decoding Time Stamp)与 pts(presentation Time Stamp)是不相同，所以-1的功能实现会有问题，只能通过缓存来解决，内存使用很多，暂时不支持
+    // pub fn next_packets(&mut self) {
+    //     self.next_packet_frame.set(PacketFrame::Packet);
+    // }
+    // pub fn next_frames(&mut self) {
+    //     self.next_packet_frame.set(PacketFrame::Frame);
+    // }
+
+    pub fn next_ui(&mut self) {
+        self.next_packet_frame.set(self.next_packet_frame_ui.get());
+    }
+    pub fn get_next_amount(&self) -> i32 {
+        self.next_amount.get()
     }
 
     pub fn get_mute(&self) -> bool {
@@ -857,8 +912,15 @@ impl Player {
         self.player_state.set(new_state);
     }
 
+    pub(crate) fn show_seekbar(&self) -> bool {
+        let ts = Utc::now().timestamp_millis();
+        if ts - self.mouth_move_ts < MAX_DIFF_MOVE_MOUSE {
+            return true;
+        }
+        return false;
+    }
 
-    fn elapsed_ms(&self) -> i64 {
+    pub fn elapsed_ms(&self) -> i64 {
         self.video_elapsed_ms_override
             .as_ref()
             .map(|i| *i)

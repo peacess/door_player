@@ -15,6 +15,15 @@ use crate::player::RingBufferProducer;
 use crate::player::video::VideoFrame;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
+pub enum PacketFrame {
+    None,
+    Packet,
+    Frame,
+}
+
+unsafe impl NoUninit for PacketFrame {}
+
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum PlayerState {
     /// No playback.
     Stopped,
@@ -93,6 +102,15 @@ pub struct PlayCtrl {
 
     pub video_elapsed_ms: Shared<i64>,
     pub audio_elapsed_ms: Shared<i64>,
+
+    /// 一次前进的数量，
+    pub next_amount: Shared<i32>,
+    /// true 为next packet,
+    /// false 为next frame
+    /// None 为没有
+    pub next_packet_frame: Shared<PacketFrame>,
+    pub next_packet_frame_ui: Shared<PacketFrame>,
+
 }
 
 impl PlayCtrl {
@@ -123,6 +141,10 @@ impl PlayCtrl {
             producer: Arc::new(Mutex::new(producer)),
             video_elapsed_ms: Shared::new(0),
             audio_elapsed_ms: Shared::new(0),
+
+            next_packet_frame: Shared::new(PacketFrame::Packet),
+            next_amount: Shared::new(1),
+            next_packet_frame_ui: Shared::new(PacketFrame::Packet),
         }
     }
 

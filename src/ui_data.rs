@@ -2,7 +2,7 @@ use std::{fs, path};
 
 use egui::{Event, Key, PointerButton, Ui};
 
-use crate::player::{Player, PlayerState};
+use crate::player::{PacketFrame, Player, PlayerState};
 
 pub struct AppUi {
     collapse: bool,
@@ -16,6 +16,7 @@ pub struct AppUi {
 
 impl AppUi {
     pub(crate) fn handle_key_player(&mut self, ui: &mut Ui, _ctx: &egui::Context) {
+        const ONE_SEEK_SECONDS: f32 = 5.0;// seconds
         let mut set_player_none = false;
         if let Some(player) = &mut self.player {
             let p = {
@@ -40,14 +41,18 @@ impl AppUi {
                         Event::Key { key, pressed: true, .. } => {
                             match *key {
                                 Key::ArrowLeft => {
-                                    let diff = player.video_elapsed_ms.get() as f32 - 10.0;
+                                    let diff = player.elapsed_ms() as f32 - ONE_SEEK_SECONDS * 1000.0;
                                     if diff > 0.0 {
                                         seek = diff / player.duration_ms as f32;
                                     }
                                 }
                                 Key::ArrowRight => {
-                                    let diff = player.video_elapsed_ms.get() as f32 + 10.0;
-                                    seek = diff / player.duration_ms as f32;
+                                    if player.player_state.get() == PlayerState::Paused {
+                                        player.next_ui();
+                                    } else {
+                                        let diff = player.elapsed_ms() as f32 + ONE_SEEK_SECONDS * 1000.0;
+                                        seek = diff / player.duration_ms as f32;
+                                    }
                                 }
                                 Key::ArrowUp => {}
                                 Key::ArrowDown => {}
@@ -82,7 +87,8 @@ impl AppUi {
         }
     }
 
-    pub(crate) fn handle_key_no_player(&mut self, ui: &Ui, ctx: &egui::Context) {
+    pub(crate) fn handle_key_no_player(&mut self, ui: &mut Ui, ctx: &egui::Context) {
+        ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
         ui.input(|k| {
             for e in &k.events {
                 match e {
@@ -297,11 +303,60 @@ impl eframe::App for AppUi {
                             }
                         }
                     }
+                    if let Some(player) = &mut self.player {
+                        let (mut next_packet, mut next_frame) = match player.next_packet_frame_ui.get() {
+                            PacketFrame::None => (false, false),
+                            PacketFrame::Packet => (true, false),
+                            PacketFrame::Frame => (false, true),
+                        };
+                        let mut next_amout = player.next_amount.get();
+                        let mut next_str = format!("{}", next_amout);
+                        ui.horizontal(|ui| {
+                            if ui.checkbox(&mut next_packet, "next packets: ").changed() {
+                                if next_packet {
+                                    next_frame = false;
+                                    player.next_packet_frame_ui.set(PacketFrame::Packet);
+                                } else if next_frame {
+                                    //do nothing
+                                } else if !next_frame {
+                                    player.next_packet_frame_ui.set(PacketFrame::None);
+                                }
+                            }
+                            if next_packet {
+                                if ui.add(egui::TextEdit::singleline(&mut next_str)).changed() {
+                                    if let Ok(v) = next_str.parse() {
+                                        next_amout = v;
+                                        player.next_amount.set(next_amout);
+                                    }
+                                }
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.checkbox(&mut next_frame, "next frames: ").changed() {
+                                if next_frame {
+                                    next_packet = false;
+                                    player.next_packet_frame_ui.set(PacketFrame::Frame);
+                                } else if next_packet {
+                                    //do nothing
+                                } else if !next_packet {
+                                    player.next_packet_frame_ui.set(PacketFrame::None);
+                                }
+                            }
+                            if next_frame {
+                                if ui.add(egui::TextEdit::singleline(&mut next_str)).changed() {
+                                    if let Ok(v) = next_str.parse() {
+                                        next_amout = v;
+                                        player.next_amount.set(next_amout);
+                                    }
+                                }
+                            }
+                        });
+                    }
+
 
                     ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
                 });
         }
-
 
         egui::CentralPanel::default().frame(frame)
             .show(ctx, |ui| {

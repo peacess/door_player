@@ -1,7 +1,8 @@
 use std::io::Write;
 
-use door_player::AppUi;
 use env_logger::Env;
+
+use door_player::AppUi;
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
