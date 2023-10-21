@@ -1,4 +1,5 @@
 pub use audio::*;
+pub use command::*;
 pub use consts::*;
 pub use kits::*;
 pub use play_ctrl::*;
@@ -11,3 +12,4 @@ mod video;
 mod play_ctrl;
 mod audio;
 mod consts;
+mod command;

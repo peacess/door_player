@@ -1,8 +1,10 @@
 use std::{fs, path};
 
+use eframe::Frame;
 use egui::{Event, Key, PointerButton, Ui};
 
-use crate::player::{PacketFrame, Player, PlayerState};
+use crate::kits::Shared;
+use crate::player::{CommandGo, CommandUi, Player, PlayerState};
 
 pub struct AppUi {
     collapse: bool,
@@ -10,14 +12,15 @@ pub struct AppUi {
 
     media_path: String,
     no_scale: bool,
+
+    command_ui: Shared<CommandUi>,
+
     // stream_size_scale: f32,
     // seek_frac: f32,
 }
 
 impl AppUi {
     pub(crate) fn handle_key_player(&mut self, ui: &mut Ui, _ctx: &egui::Context) {
-        const ONE_SEEK_SECONDS: f32 = 5.0;// seconds
-        let mut set_player_none = false;
         if let Some(player) = &mut self.player {
             let p = {
                 if self.no_scale {
@@ -33,26 +36,17 @@ impl AppUi {
 
             ui.input(|k| {
                 for e in &k.events {
-                    let mut seek = 0.0f32;
                     match e {
                         Event::Key { key: Key::Escape, pressed: true, .. } => {
-                            set_player_none = true;
+                            player.command_ui.set(CommandUi::FullscreenToggle);
                         }
                         Event::Key { key, pressed: true, .. } => {
                             match *key {
                                 Key::ArrowLeft => {
-                                    let diff = player.elapsed_ms() as f32 - ONE_SEEK_SECONDS * 1000.0;
-                                    if diff > 0.0 {
-                                        seek = diff / player.duration_ms as f32;
-                                    }
+                                    player.go_back_ui();
                                 }
                                 Key::ArrowRight => {
-                                    if player.player_state.get() == PlayerState::Paused {
-                                        player.next_ui();
-                                    } else {
-                                        let diff = player.elapsed_ms() as f32 + ONE_SEEK_SECONDS * 1000.0;
-                                        seek = diff / player.duration_ms as f32;
-                                    }
+                                    player.go_ahead_ui();
                                 }
                                 Key::ArrowUp => {}
                                 Key::ArrowDown => {}
@@ -71,19 +65,14 @@ impl AppUi {
                                         _ => {}
                                     }
                                 }
+
                                 _ => {}
                             }
                         }
                         _ => {}
                     }
-                    if seek > 0.0 {
-                        player.seek(seek as f64);
-                    }
                 }
             });
-        }
-        if set_player_none {
-            self.player = None;
         }
     }
 
@@ -99,7 +88,7 @@ impl AppUi {
                             if !self.media_path.is_empty() {
                                 let f = self.media_path.clone();
                                 // self.media_path = "".to_owned();
-                                match Player::new(ctx, &f) {
+                                match Player::new(ctx, self.command_ui.clone(), &f) {
                                     Ok(p) => {
                                         self.player = Some(p);
                                     }
@@ -185,6 +174,27 @@ impl AppUi {
         }
         return String::default();
     }
+
+    fn handle_command_ui(&mut self, _frame: &mut Frame) {
+        {
+            let cmd = self.command_ui.get();
+            self.command_ui.set(CommandUi::None);
+
+            match cmd {
+                CommandUi::None => {}
+                CommandUi::FullscreenToggle => _frame.set_fullscreen(!_frame.info().window_info.fullscreen),
+                CommandUi::FullscreenTrue => _frame.set_fullscreen(true),
+                CommandUi::FullscreenFalse => _frame.set_fullscreen(true),
+                CommandUi::MaximizedToggle => _frame.set_maximized(!_frame.info().window_info.maximized),
+                CommandUi::MaximizedTrue => _frame.set_maximized(true),
+                CommandUi::MaximizedFalse => _frame.set_maximized(false),
+                CommandUi::MinimizedToggle => _frame.set_minimized(!_frame.info().window_info.minimized),
+                CommandUi::MinimizedTrue => _frame.set_minimized(true),
+                CommandUi::MinimizedFalse => _frame.set_minimized(false),
+                CommandUi::Close => { _frame.close(); }
+            }
+        }
+    }
 }
 
 unsafe impl Send for AppUi {}
@@ -198,8 +208,7 @@ impl Default for AppUi {
             player: None,
             media_path: String::default(),
             no_scale: false,
-            // stream_size_scale: 1.0,
-            // seek_frac: 0.0,
+            command_ui: Shared::new(CommandUi::None),
         }
     }
 }
@@ -213,7 +222,9 @@ impl AppUi {
     }
 
     pub fn run_app() {
-        let re = eframe::run_native("Door Player", eframe::NativeOptions::default(),
+        let mut ops = eframe::NativeOptions::default();
+        ops.centered = true;
+        let re = eframe::run_native("Door Player", ops,
                                     Box::new(|_| Box::new(AppUi::default())), );
         if let Err(e) = re {
             log::error!("{}", e);
@@ -247,53 +258,65 @@ impl eframe::App for AppUi {
         // } else {
         //     ctx.set_debug_on_hover(false);
         // }
+
+        self.handle_command_ui(_frame);
+
         let frame = egui::Frame::default();
         if !self.collapse {
             egui::SidePanel::right("right_panel").frame(frame.clone())
                 .min_width(0.0)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    if ui.button("Open").clicked() {
-                        if let Some(buf) = rfd::FileDialog::new().add_filter("videos", &["mp4"]).pick_file() {
-                            let f = buf.as_path().to_string_lossy().to_string();
-                            self.media_path = f;
-                            if !self.media_path.is_empty() {
-                                let f = self.media_path.clone();
-                                // self.media_path = "".to_owned();
-                                match Player::new(ctx, &f) {
-                                    Ok(p) => {
-                                        self.player = Some(p);
-                                    }
-                                    Err(e) => {
-                                        log::error!("{}", e);
+                    ui.horizontal(|ui| {
+                        if ui.button("Open").clicked() {
+                            if let Some(buf) = rfd::FileDialog::new().add_filter("videos", &["mp4"]).pick_file() {
+                                let f = buf.as_path().to_string_lossy().to_string();
+                                self.media_path = f;
+                                if !self.media_path.is_empty() {
+                                    let f = self.media_path.clone();
+                                    // self.media_path = "".to_owned();
+                                    match Player::new(ctx, self.command_ui.clone(), &f) {
+                                        Ok(p) => {
+                                            self.player = Some(p);
+                                        }
+                                        Err(e) => {
+                                            log::error!("{}", e);
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    if ui.button("Close").clicked() {
-                        self.player = None;
-                    }
-
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Stop").clicked() {
+                            self.player = None;
+                        }
+                    });
                     ui.checkbox(&mut self.no_scale, "no scale");
 
                     if !self.media_path.is_empty() {
                         ui.label(self.media_path.clone());
                         let mut file = String::default();
-                        if ui.button("Next file").clicked() {
-                            file = AppUi::next_file(&self.media_path);
-                        }
-                        if ui.button("ReOpen").clicked() {
-                            file = self.media_path.clone();
-                        }
-                        if ui.button("Pre file").clicked() {
-                            file = AppUi::pre_file(&self.media_path);
-                        }
+                        ui.horizontal(|ui| {
+                            if ui.button("Next file").clicked() {
+                                file = AppUi::next_file(&self.media_path);
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("ReOpen").clicked() {
+                                file = self.media_path.clone();
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("Pre file").clicked() {
+                                file = AppUi::pre_file(&self.media_path);
+                            }
+                        });
 
                         if !file.is_empty() {
                             self.media_path = file;
                             let f = self.media_path.clone();
-                            match Player::new(ctx, &f.replace("\"", "")) {
+                            match Player::new(ctx, self.command_ui.clone(), &f) {
                                 Ok(p) => {
                                     self.player = Some(p);
                                 }
@@ -304,55 +327,80 @@ impl eframe::App for AppUi {
                         }
                     }
                     if let Some(player) = &mut self.player {
-                        let (mut next_packet, mut next_frame) = match player.next_packet_frame_ui.get() {
-                            PacketFrame::None => (false, false),
-                            PacketFrame::Packet => (true, false),
-                            PacketFrame::Frame => (false, true),
-                        };
-                        let mut next_amout = player.next_amount.get();
-                        let mut next_str = format!("{}", next_amout);
                         ui.horizontal(|ui| {
-                            if ui.checkbox(&mut next_packet, "next packets: ").changed() {
-                                if next_packet {
-                                    next_frame = false;
-                                    player.next_packet_frame_ui.set(PacketFrame::Packet);
-                                } else if next_frame {
-                                    //do nothing
-                                } else if !next_frame {
-                                    player.next_packet_frame_ui.set(PacketFrame::None);
+                            let (mut go_amount, mut go_packet) = match player.command_go_ui.get() {
+                                CommandGo::Packet(v) => (v, true),
+                                _ => (10, false),
+                            };
+                            if ui.checkbox(&mut go_packet, "go packets: ").changed() {
+                                if go_packet {
+                                    player.command_go_ui.set(CommandGo::Packet(go_amount));
+                                } else {
+                                    player.command_go_ui.set(CommandGo::None);
                                 }
                             }
-                            if next_packet {
-                                if ui.add(egui::TextEdit::singleline(&mut next_str)).changed() {
-                                    if let Ok(v) = next_str.parse() {
-                                        next_amout = v;
-                                        player.next_amount.set(next_amout);
+                            if go_packet {
+                                let mut str_amount = format!("{}", go_amount);
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
+                                    if let Ok(v) = str_amount.parse() {
+                                        go_amount = v;
+                                        player.command_go_ui.set(CommandGo::Packet(go_amount));
                                     }
                                 }
                             }
                         });
                         ui.horizontal(|ui| {
-                            if ui.checkbox(&mut next_frame, "next frames: ").changed() {
-                                if next_frame {
-                                    next_packet = false;
-                                    player.next_packet_frame_ui.set(PacketFrame::Frame);
-                                } else if next_packet {
-                                    //do nothing
-                                } else if !next_packet {
-                                    player.next_packet_frame_ui.set(PacketFrame::None);
+                            let (mut go_amount, mut go_frame) = match player.command_go_ui.get() {
+                                CommandGo::Frame(v) => (v, true),
+                                _ => (5, false),
+                            };
+                            if ui.checkbox(&mut go_frame, "go frames: ").changed() {
+                                if go_frame {
+                                    player.command_go_ui.set(CommandGo::Frame(go_amount));
+                                } else {
+                                    player.command_go_ui.set(CommandGo::None);
                                 }
                             }
-                            if next_frame {
-                                if ui.add(egui::TextEdit::singleline(&mut next_str)).changed() {
-                                    if let Ok(v) = next_str.parse() {
-                                        next_amout = v;
-                                        player.next_amount.set(next_amout);
+                            if go_frame {
+                                let mut str_amount = format!("{}", go_amount);
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
+                                    if let Ok(v) = str_amount.parse() {
+                                        go_amount = v;
+                                        player.command_go_ui.set(CommandGo::Frame(go_amount));
                                     }
                                 }
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            let (mut go_amount, mut seek_ms) = match player.command_go_ui.get() {
+                                CommandGo::GoMs(v) => (v, true),
+                                _ => (5000, false),
+                            };
+                            if ui.checkbox(&mut seek_ms, "go ms: ").changed() {
+                                if seek_ms {
+                                    player.command_go_ui.set(CommandGo::GoMs(go_amount));
+                                } else {
+                                    player.command_go_ui.set(CommandGo::None);
+                                }
+                            }
+                            if seek_ms {
+                                let mut str_amount = format!("{}", go_amount);
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
+                                    if let Ok(v) = str_amount.parse() {
+                                        go_amount = v;
+                                        player.command_go_ui.set(CommandGo::GoMs(go_amount));
+                                    }
+                                }
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            if ui.button("Go").clicked() {
+                                player.go_ahead_ui();
                             }
                         });
                     }
-
 
                     ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
                 });

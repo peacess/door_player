@@ -9,19 +9,10 @@ use parking_lot::Mutex;
 use ringbuf::SharedRb;
 
 use crate::kits::Shared;
+use crate::player::{AV_TIME_BASE_RATIONAL, CommandGo, RingBufferProducer, timestamp_to_millisecond};
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
-use crate::player::RingBufferProducer;
 use crate::player::video::VideoFrame;
-
-#[derive(PartialEq, Clone, Copy, Debug)]
-pub enum PacketFrame {
-    None,
-    Packet,
-    Frame,
-}
-
-unsafe impl NoUninit for PacketFrame {}
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum PlayerState {
@@ -83,7 +74,6 @@ pub struct PlayCtrl {
     pub player_state: Shared<PlayerState>,
     /// 解码开始时间, 也是音视频的起始时间
     start: Instant,
-    pub seek_scale: Arc<atomic::Atomic<f64>>,
     /// 解封装(取包)完成
     packet_finished: Arc<AtomicBool>,
     /// 视频播放线程完成
@@ -100,21 +90,21 @@ pub struct PlayCtrl {
     pub texture_handle: egui::TextureHandle,
     producer: Arc<Mutex<RingBufferProducer<f32>>>,
 
+    pub duration: i64,
+    pub duration_ms: i64,
     pub video_elapsed_ms: Shared<i64>,
     pub audio_elapsed_ms: Shared<i64>,
+    pub video_elapsed_ms_override: Shared<i64>,
 
-    /// 一次前进的数量，
-    pub next_amount: Shared<i32>,
-    /// true 为next packet,
-    /// false 为next frame
-    /// None 为没有
-    pub next_packet_frame: Shared<PacketFrame>,
-    pub next_packet_frame_ui: Shared<PacketFrame>,
+    pub command_go: Shared<CommandGo>,
+    /// ui界面使用
+    pub command_go_ui: Shared<CommandGo>,
 
 }
 
 impl PlayCtrl {
     pub fn new(
+        duration: i64,
         producer: ringbuf::Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
         audio_dev: Arc<AudioDevice>,
         texture_handle: TextureHandle,
@@ -129,7 +119,6 @@ impl PlayCtrl {
         Self {
             player_state: Shared::new(PlayerState::Paused),
             start,
-            seek_scale: Arc::new(atomic::Atomic::new(-1.0)),
             packet_finished: demux_finished,
             video_finished,
             video_clock,
@@ -142,18 +131,24 @@ impl PlayCtrl {
             video_elapsed_ms: Shared::new(0),
             audio_elapsed_ms: Shared::new(0),
 
-            next_packet_frame: Shared::new(PacketFrame::Packet),
-            next_amount: Shared::new(1),
-            next_packet_frame_ui: Shared::new(PacketFrame::Packet),
+            command_go: Shared::new(CommandGo::Packet(1)),
+            command_go_ui: Shared::new(CommandGo::Packet(1)),
+            duration,
+            duration_ms: timestamp_to_millisecond(duration, AV_TIME_BASE_RATIONAL),
+            video_elapsed_ms_override: Shared::new(-1),
         }
     }
 
     pub fn set_mute(&self, mute: bool) {
         self.audio_dev.set_mute(mute);
     }
-    pub fn seek(&mut self, seek_scale: f64) {
-        self.seek_scale.store(seek_scale, Ordering::Relaxed);
+    pub fn elapsed_ms(&self) -> i64 {
+        match self.video_elapsed_ms_override.get() {
+            -1 => self.video_elapsed_ms.get(),
+            t => t,
+        }
     }
+
     pub fn set_audio_finished(&self, finished: bool) {
         self.audio_finished.store(finished, Ordering::Relaxed);
     }

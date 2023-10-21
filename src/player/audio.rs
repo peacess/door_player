@@ -81,7 +81,7 @@ impl AudioDevice {
         self.mute.load(Ordering::Relaxed)
     }
 
-    pub fn set_pause(&self, pause: bool) {
+    fn set_pause(&self, pause: bool) {
         if pause {
             if let Err(e) = self.stream.pause() {
                 log::error!("{}", e);

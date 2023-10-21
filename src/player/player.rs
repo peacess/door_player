@@ -2,7 +2,6 @@ use std::default::Default;
 use std::ops::{Deref, DerefMut};
 use std::path;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::UNIX_EPOCH;
 
 use chrono::{DateTime, Utc};
@@ -14,7 +13,8 @@ use ffmpeg::decoder::Video;
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
-use crate::player::{AV_TIME_BASE_RATIONAL, MAX_DIFF_MOVE_MOUSE, PacketFrame, PlayerState};
+use crate::kits::Shared;
+use crate::player::{CommandGo, CommandUi, MAX_DIFF_MOVE_MOUSE, PlayerState};
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::kits::timestamp_to_millisecond;
@@ -29,35 +29,37 @@ pub struct Player {
     pub height: u32,
 
     pub max_audio_volume: f32,
-    pub duration_ms: i64,
+
     last_seek_ms: Option<i64>,
-    video_elapsed_ms_override: Option<i64>,
 
     /// mouse move ts, compute if show the status bar
     pub mouth_move_ts: i64,
+
+    pub command_ui: Shared<CommandUi>,
 }
 
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
-    pub fn new(ctx: &egui::Context, file: &str) -> Result<Player, anyhow::Error> {
+    pub fn new(ctx: &egui::Context, command_ui: Shared<CommandUi>, file: &str) -> Result<Player, anyhow::Error> {
+        //打开文件
+        let format_input = ffmpeg::format::input(&path::Path::new(file))?;
         let max_audio_volume = 1.;
         let play_ctrl = {
             let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8192).split();
             let audio_dev = Arc::new(AudioDevice::new(consumer)?);
-            PlayCtrl::new(producer, audio_dev, Self::default_texture_handle(ctx))
+            audio_dev.resume();
+            PlayCtrl::new(format_input.duration(), producer, audio_dev, Self::default_texture_handle(ctx))
         };
 
-        //打开文件
-        let format_input = ffmpeg::format::input(&path::Path::new(file))?;
+
         let mut player = Self {
             play_ctrl,
             width: 0,
             height: 0,
             max_audio_volume,
-            duration_ms: timestamp_to_millisecond(format_input.duration(), AV_TIME_BASE_RATIONAL),
             last_seek_ms: None,
-            video_elapsed_ms_override: None,
             mouth_move_ts: chrono::Utc::now().timestamp_millis(),
+            command_ui,
         };
 
         // 获取视频解码器
@@ -378,9 +380,9 @@ impl Player {
                     break;
                 }
 
-                if play_ctrl.next_packet_frame.get() == PacketFrame::Frame {
-                    play_ctrl.next_packet_frame.set(PacketFrame::None);
-                    for _ in 1..play_ctrl.next_amount.get() {
+                if let CommandGo::Frame(t) = play_ctrl.command_go.get() {
+                    play_ctrl.command_go.set(CommandGo::None);
+                    for _ in 1..t {
                         loop {
                             if let Ok(Some(_)) = frame_deque.try_recv() {
                                 break;
@@ -479,57 +481,85 @@ impl Player {
                     break;
                 }
 
-                let scale = play_ctrl.seek_scale.load(Ordering::Relaxed);
-                let state = play_ctrl.player_state.get();
-                let next_ = play_ctrl.next_packet_frame.get();
-                let next_count = play_ctrl.next_amount.get();
-                if next_ == PacketFrame::Packet && next_count > 0 {
-                    play_ctrl.next_packet_frame.set(PacketFrame::None);
-                    for _ in 1..next_count {
-                        if let None = input.packets().next() {
-                            break;
+                let mut packets = 1;
+                match play_ctrl.command_go.get() {
+                    CommandGo::Packet(next_amount) => {
+                        play_ctrl.command_go.set(CommandGo::None);
+                        for _ in 1..next_amount {
+                            if let None = input.packets().next() {
+                                play_ctrl.set_packet_finished(true);
+                                spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                                continue 'PACKETS;
+                            }
                         }
                     }
-                } else if scale > 0.0 {
-                    let seek_pos = (scale * duration as f64) as i64;
-                    if let Err(e) = input.seek(seek_pos, ..seek_pos) {
-                        log::error!("{}", e);
+                    CommandGo::GoMs(ms) => {
+                        play_ctrl.command_go.set(CommandGo::None);
+                        let diff = play_ctrl.elapsed_ms() as i64 + ms;
+                        let scale = diff as f64 / play_ctrl.duration_ms as f64;
+
+                        let seek_pos = (scale * duration as f64) as i64;
+                        if let Err(e) = input.seek(seek_pos, ..seek_pos) {
+                            log::error!("{}", e);
+                        }
+                        //清空之前的数据
+                        let _ = audio_deque.send(None);
+                        let _ = video_deque.send(None);
                     }
-                    play_ctrl.seek(-1.0);
-                    //清空之前的数据
-                    let _ = audio_deque.send(None);
-                    let _ = audio_deque.send(None);
-                    let _ = video_deque.send(None);
-                    let _ = video_deque.send(None);
-                } else {
-                    if state == PlayerState::Paused || audio_deque.is_full() || video_deque.is_full() {
-                        spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                        continue;
+                    CommandGo::Seek(t) => {
+                        play_ctrl.command_go.set(CommandGo::None);
+                        let seek_pos = {
+                            if t > play_ctrl.duration {
+                                play_ctrl.duration
+                            } else if t < 1 {
+                                0
+                            } else {
+                                t
+                            }
+                        };
+                        if let Err(e) = input.seek(seek_pos, ..seek_pos) {
+                            log::error!("{}", e);
+                        }
+                        //清空之前的数据
+                        let _ = audio_deque.send(None);
+                        let _ = video_deque.send(None);
+                        //不是每一packet的数据都会有界面输出，所以会出现seek后且是pause时，画面没有到位，所以多输出一packet
+                        if let PlayerState::Paused = play_ctrl.player_state.get() {
+                            packets = 2;
+                        }
+                    }
+                    _ => {
+                        if play_ctrl.player_state.get() == PlayerState::Paused || audio_deque.is_full() || video_deque.is_full() {
+                            spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                            continue 'PACKETS;
+                        }
                     }
                 }
 
-                if let Some((stream, packet)) = input.packets().next() {
-                    if unsafe { !packet.is_empty() } {
-                        if packet.stream() == audio_index {
-                            if let Some(dts) = packet.dts() {
-                                play_ctrl.audio_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
-                            }
-                            if let Err(e) = audio_deque.send(Some(packet)) {
-                                log::error!("{}", e);
-                            }
-                        } else if packet.stream() == video_index {
-                            if let Some(dts) = packet.dts() {
-                                play_ctrl.video_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
-                            }
-                            if let Err(e) = video_deque.send(Some(packet)) {
-                                log::error!("{}", e);
+                for _ in 0..packets {
+                    if let Some((stream, packet)) = input.packets().next() {
+                        if unsafe { !packet.is_empty() } {
+                            if packet.stream() == audio_index {
+                                if let Some(dts) = packet.dts() {
+                                    play_ctrl.audio_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
+                                }
+                                if let Err(e) = audio_deque.send(Some(packet)) {
+                                    log::error!("{}", e);
+                                }
+                            } else if packet.stream() == video_index {
+                                if let Some(dts) = packet.dts() {
+                                    play_ctrl.video_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
+                                }
+                                if let Err(e) = video_deque.send(Some(packet)) {
+                                    log::error!("{}", e);
+                                }
                             }
                         }
+                    } else {
+                        play_ctrl.set_packet_finished(true);
+                        spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                        continue 'PACKETS;
                     }
-                } else {
-                    play_ctrl.set_packet_finished(true);
-                    spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                    continue 'PACKETS;
                 }
             }
         });
@@ -558,9 +588,9 @@ impl Player {
     }
     fn render_ui(&mut self, ui: &mut Ui, image_res: &Response) -> Option<Rect> {
         let hovered = ui.rect_contains_pointer(image_res.rect);
-        let currently_seeking = matches!(self.player_state.get(), PlayerState::Seeking(_));
-        let is_stopped = matches!(self.player_state.get(), PlayerState::Stopped);
-        let is_paused = matches!(self.player_state.get(), PlayerState::Paused);
+        let currently_seeking = if let PlayerState::Seeking(_) = self.player_state.get() { true } else { false };
+        let is_stopped = self.player_state.get() == PlayerState::Stopped;
+        let is_paused = self.player_state.get() == PlayerState::Paused;
         let seekbar_anim_frac = ui.ctx().animate_bool_with_time(
             image_res.id.with("seekbar_anim"),
             hovered || currently_seeking || is_paused || is_stopped,
@@ -568,14 +598,22 @@ impl Player {
         );
 
         {
+            let mut moving = false;
             ui.input(|e| {
                 if e.pointer.is_moving() {
-                    self.mouth_move_ts = chrono::Utc::now().timestamp_millis();
+                    moving = true;
                 }
             });
+            if moving {
+                self.mouth_move_ts = chrono::Utc::now().timestamp_millis();
+                let cursor = ui.ctx().output(|o| o.cursor_icon);
+                if cursor == egui::CursorIcon::None {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::Default);
+                }
+            }
         };
 
-        if self.show_seekbar() && seekbar_anim_frac > 0. {
+        if (is_paused || is_stopped || currently_seeking || self.show_seekbar()) && seekbar_anim_frac > 0. {
             let seekbar_width_offset = 20.;
             let full_seek_bar_width = image_res.rect.width() - seekbar_width_offset;
 
@@ -653,7 +691,8 @@ impl Player {
                         if is_stopped {
                             self.start()
                         }
-                        self.seek(seek_frac as f64);
+                        let frame = seek_frac as f64 * self.duration as f64;
+                        self.seek(frame as i64);
                     }
                 }
             }
@@ -738,23 +777,16 @@ impl Player {
                 );
             }
 
-            if image_res.clicked() {
-                let mut reset_stream = false;
-                let mut start_stream = false;
-
-                match self.player_state.get() {
-                    PlayerState::Stopped => start_stream = true,
-                    PlayerState::EndOfFile => reset_stream = true,
-                    PlayerState::Paused => self.player_state.set(PlayerState::Playing),
-                    PlayerState::Playing => self.player_state.set(PlayerState::Paused),
-                    _ => (),
+            {
+                if image_res.clicked() {
+                    match self.player_state.get() {
+                        PlayerState::Paused => self.player_state.set(PlayerState::Playing),
+                        PlayerState::Playing => self.player_state.set(PlayerState::Paused),
+                        _ => (),
+                    }
                 }
-
-                if reset_stream {
-                    self.reset();
-                    self.resume();
-                } else if start_stream {
-                    self.start();
+                if image_res.double_clicked() {
+                    self.command_ui.set(CommandUi::FullscreenToggle);
                 }
             }
 
@@ -840,7 +872,9 @@ impl Player {
 
             Some(seekbar_interact_rect)
         } else {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            if hovered {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::None);
+            }
             None
         }
     }
@@ -857,10 +891,12 @@ impl Player {
     pub fn stop(&mut self) {
         self.set_state(PlayerState::Stopped);
     }
-
+    pub fn seek(&mut self, frame_number: i64) {
+        self.command_go.set(CommandGo::Seek(frame_number));
+    }
     // seek in play ctrl
     pub fn reset(&mut self) {
-        self.seek(0.0);
+        self.seek(0);
     }
 
     /// 此方法最好在 [PlayerState::Paused] 时使用。
@@ -874,13 +910,18 @@ impl Player {
     //     self.next_packet_frame.set(PacketFrame::Frame);
     // }
 
-    pub fn next_ui(&mut self) {
-        self.next_packet_frame.set(self.next_packet_frame_ui.get());
+    pub fn go_ahead_ui(&mut self) {
+        self.command_go.set(self.command_go_ui.get());
     }
-    pub fn get_next_amount(&self) -> i32 {
-        self.next_amount.get()
+    pub fn go_back_ui(&mut self) {
+        match self.command_go_ui.get() {
+            CommandGo::Frame(t) => self.command_go.set(CommandGo::Frame(-t)),
+            CommandGo::Packet(t) => self.command_go.set(CommandGo::Packet(-t)),
+            CommandGo::GoMs(t) => self.command_go.set(CommandGo::GoMs(-t)),
+            CommandGo::None => self.command_go.set(CommandGo::None),
+            _ => {}
+        }
     }
-
     pub fn get_mute(&self) -> bool {
         self.audio_dev.get_mute()
     }
@@ -893,20 +934,20 @@ impl Player {
     fn set_state(&mut self, new_state: PlayerState) {
         match new_state {
             PlayerState::Stopped => {
-                self.audio_dev.set_pause(true);
+                // self.audio_dev.set_pause(true);
             }
             PlayerState::EndOfFile => {
-                self.audio_dev.set_pause(true);
+                // self.audio_dev.set_pause(true);
             }
             PlayerState::Seeking(_) => {}
             PlayerState::Paused => {
-                self.audio_dev.set_pause(true);
+                // self.audio_dev.set_pause(true);
             }
             PlayerState::Playing => {
-                self.audio_dev.set_pause(false);
+                self.audio_dev.resume();
             }
             PlayerState::Restarting => {
-                self.audio_dev.set_pause(false);
+                self.audio_dev.resume();
             }
         }
         self.player_state.set(new_state);
@@ -920,12 +961,6 @@ impl Player {
         return false;
     }
 
-    pub fn elapsed_ms(&self) -> i64 {
-        self.video_elapsed_ms_override
-            .as_ref()
-            .map(|i| *i)
-            .unwrap_or(self.video_elapsed_ms.get())
-    }
     fn duration_frac(&mut self) -> f32 {
         self.elapsed_ms() as f32 / self.duration_ms as f32
     }
@@ -965,13 +1000,13 @@ impl Player {
                         // if let Some(previous_player_state) = self.pre_seek_player_state {
                         //     self.set_state(previous_player_state)
                         // }
-                        self.video_elapsed_ms_override = None;
+                        self.video_elapsed_ms_override.set(-1);
                         self.last_seek_ms = None;
                     } else {
-                        self.video_elapsed_ms_override = Some(last_seek_ms);
+                        self.video_elapsed_ms_override.set(last_seek_ms);
                     }
                 } else {
-                    self.video_elapsed_ms_override = None;
+                    self.video_elapsed_ms_override.set(-1);
                 }
             }
             PlayerState::Restarting => reset_stream = true,

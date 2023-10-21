@@ -1,6 +1,6 @@
-pub use ui_data::AppUi;
+pub use app_ui::AppUi;
 
-mod ui_data;
+mod app_ui;
 pub mod kits;
 pub mod player;
 
