@@ -101,12 +101,14 @@ impl AudioDevice {
     }
 
     fn write_audio<T: cpal::Sample>(data: &mut [T], consumer: &mut RingBufferConsumer<T>, _: &cpal::OutputCallbackInfo) {
-        if consumer.len() >= data.len() {
-            consumer.pop_slice(data);
-        } else {
-            for d in data.iter_mut() {
-                *d = T::EQUILIBRIUM;
+        if consumer.len() > 0 {
+            let done = consumer.pop_slice(data);
+            if done < data.len() {
+                let s = &mut data[done..];
+                s.fill(T::EQUILIBRIUM);
             }
+        }else {
+            data.fill(T::EQUILIBRIUM);
         }
         // for d in data {
         //     // copy as many samples as we have.

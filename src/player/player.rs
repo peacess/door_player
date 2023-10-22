@@ -42,13 +42,24 @@ impl Player {
     //初始化所有线程，如果之前的还在，结束它们
     pub fn new(ctx: &egui::Context, command_ui: Shared<CommandUi>, file: &str) -> Result<Player, anyhow::Error> {
         //打开文件
-        let format_input = ffmpeg::format::input(&path::Path::new(file))?;
+        let mut format_input = ffmpeg::format::input(&path::Path::new(file))?;
+        let fist_frame = Self::first_frame(&mut format_input)?;
+        {
+            let beginning: i64 = 0;
+            let beginning_seek = beginning.rescale((1, 1), rescale::TIME_BASE);
+            if let Err(e) = format_input.seek(beginning_seek, ..beginning_seek) {
+                log::error!("{}", e);
+            }
+        }
+        let _ = print_meda_info(&mut format_input);
         let max_audio_volume = 1.;
+        let mut texture_handle = Self::default_texture_handle(ctx);
+        texture_handle.set(Self::frame_to_color_image(&fist_frame)?,egui::TextureOptions::LINEAR);
         let play_ctrl = {
-            let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8192).split();
+            let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820*3).split();
             let audio_dev = Arc::new(AudioDevice::new(consumer)?);
             audio_dev.resume();
-            PlayCtrl::new(format_input.duration(), producer, audio_dev, Self::default_texture_handle(ctx))
+            PlayCtrl::new(format_input.duration(), producer, audio_dev, texture_handle)
         };
 
 
@@ -63,17 +74,19 @@ impl Player {
         };
 
         // 获取视频解码器
-        let (video_index, video_decoder, video_decoder2) = {
+        let (video_index, video_decoder) = {
             let video_stream = format_input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
             let video_index = video_stream.index();
             let video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
-            let video_decoder = video_context.decoder().video()?;
-            let video_decoder2 = {
-                ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?.decoder().video()?
-            };
+            let mut video_decoder = video_context.decoder().video()?;
+            let mut thread_conf = video_decoder.threading();
+            log::info!("video: {:?}", &thread_conf);
+            thread_conf.count = 1;
+            thread_conf.kind = ffmpeg::threading::Type::Slice;
+            video_decoder.set_threading(thread_conf);
             player.width = video_decoder.width();
             player.height = video_decoder.height();
-            (video_index, video_decoder, video_decoder2)
+            (video_index, video_decoder)
         };
 
         // 获取音频解码器
@@ -81,7 +94,12 @@ impl Player {
             let audio_stream = format_input.streams().best(ffmpeg::media::Type::Audio).ok_or(ffmpeg::Error::InvalidData)?;
             let audio_index = audio_stream.index();
             let audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
-            let audio_decoder = audio_context.decoder().audio()?;
+            let mut audio_decoder = audio_context.decoder().audio()?;
+            let mut thread_conf = audio_decoder.threading();
+            log::info!("audio: {:?}", &thread_conf);
+            thread_conf.count = 1;
+            thread_conf.kind = ffmpeg::threading::Type::Slice;
+            audio_decoder.set_threading(thread_conf);
             (audio_index, audio_decoder)
         };
 
@@ -104,7 +122,7 @@ impl Player {
         //开启 视频播放
         player.video_play_run(ctx.clone(), video_frame_rx);
         //开启 读frame线程
-        player.read_packet_run(format_input, ctx.clone(), video_decoder2, audio_packet_sender, audio_index,
+        player.read_packet_run(format_input, ctx.clone(),  audio_packet_sender, audio_index,
                                video_packet_sender, video_index);
 
         // player.play_ctrl.set_pause(false);
@@ -150,6 +168,30 @@ impl Player {
         Ok(egui::ColorImage { size, pixels })
     }
 
+    fn first_frame(input: &mut ffmpeg::format::context::Input) -> Result<ffmpeg::frame::Video, anyhow::Error> {
+        let mut video_stream = input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
+        let video_index = video_stream.index();
+        let video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
+        let mut video_decoder = video_context.decoder().video()?;
+        loop {
+            if let Some((_, packet)) = input.packets().next() {
+                if unsafe { packet.is_empty() || packet.stream() != video_index } {
+                    continue;
+                }
+                video_decoder.send_packet(&packet)?;
+                let mut frame = ffmpeg::frame::Video::empty();
+                match video_decoder.receive_frame(&mut frame) {
+                    Err(e) => {
+                        log::debug!("{}", e);
+                    }
+                    Ok(_) => {
+                       return Ok(frame);
+                    }
+                }
+            }
+        }
+    }
+
     fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, packet_receiver: Receiver<Option<ffmpeg::Packet>>, audio_deque: Sender<AudioFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let mut audio_re_sampler = {
@@ -157,7 +199,7 @@ impl Player {
             match ResamplingContext::get(
                 audio_decoder.format(),
                 audio_decoder.channel_layout(),
-                audio_decoder.rate(),
+                audio_decoder.rate() as u32,
                 to_sample(stream_config.sample_format()),
                 audio_decoder.channel_layout(),
                 stream_config.sample_rate().0,
@@ -421,54 +463,11 @@ impl Player {
     }
 
     fn read_packet_run(&self, mut input: ffmpeg::format::context::Input,
-                       ctx: egui::Context,
-                       mut video_decoder: Video, audio_deque: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize,
+                       ctx: egui::Context, audio_deque: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize,
                        video_deque: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize) {
         let mut play_ctrl = self.play_ctrl.clone();
         let duration = input.duration();
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
-            //get first video frame, and refresh window
-            loop {
-                if let Some((_, packet)) = input.packets().next() {
-                    if unsafe { packet.is_empty() || packet.stream() != video_index } {
-                        continue;
-                    }
-
-                    if let Err(e) = video_decoder.send_packet(&packet) {
-                        log::error!("{}", e);
-                        break;
-                    }
-                    let mut frame = ffmpeg::frame::Video::empty();
-                    match video_decoder.receive_frame(&mut frame) {
-                        Err(e) => {
-                            log::debug!("{}", e);
-                        }
-                        Ok(_) => {
-                            let color_image = match Self::frame_to_color_image(&frame) {
-                                Err(e) => {
-                                    log::error!("{}", e);
-                                    break;
-                                }
-                                Ok(t) => t,
-                            };
-                            play_ctrl.texture_handle.set(color_image, egui::TextureOptions::LINEAR);
-                            ctx.request_repaint();
-                            break;
-                        }
-                    }
-                }
-            }
-            {
-                let beginning: i64 = 0;
-                let beginning_seek = beginning.rescale((1, 1), rescale::TIME_BASE);
-                if let Err(e) = input.seek(beginning_seek, ..beginning_seek) {
-                    log::error!("{}", e);
-                }
-                drop(video_decoder);
-                drop(ctx);
-            }
-            // end first frame
-
             'PACKETS: loop {
                 if play_ctrl.player_state.get() == PlayerState::Stopped {
                     log::info!("read packet exit");
@@ -1057,5 +1056,83 @@ fn to_sample(sample_format: cpal::SampleFormat) -> ffmpeg::format::Sample {
         SampleFormat::F64 => Sample::F64(SampleType::Packed),
         _ => { panic!("SampleFormat do not match") }
     }
+}
+
+fn print_meda_info(context: &ffmpeg::format::context::Input) -> Result<(), anyhow::Error> {
+    for (k, v) in context.metadata().iter() {
+        println!("{}: {}", k, v);
+    }
+
+    if let Some(stream) = context.streams().best(ffmpeg::media::Type::Video) {
+        println!("Best video stream index: {}", stream.index());
+    }
+
+    if let Some(stream) = context.streams().best(ffmpeg::media::Type::Audio) {
+        println!("Best audio stream index: {}", stream.index());
+    }
+
+    if let Some(stream) = context.streams().best(ffmpeg::media::Type::Subtitle) {
+        println!("Best subtitle stream index: {}", stream.index());
+    }
+
+    println!(
+        "duration (seconds): {:.2}",
+        context.duration() as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE)
+    );
+
+    for stream in context.streams() {
+        println!("stream index {}:", stream.index());
+        println!("\ttime_base: {}", stream.time_base());
+        println!("\tstart_time: {}", stream.start_time());
+        println!("\tduration (stream timebase): {}", stream.duration());
+        println!(
+            "\tduration (seconds): {:.2}",
+            stream.duration() as f64 * f64::from(stream.time_base())
+        );
+        println!("\tframes: {}", stream.frames());
+        println!("\tdisposition: {:?}", stream.disposition());
+        println!("\tdiscard: {:?}", stream.discard());
+        println!("\trate: {}", stream.rate());
+
+        let codec = ffmpeg::codec::context::Context::from_parameters(stream.parameters())?;
+        println!("\tmedium: {:?}", codec.medium());
+        println!("\tid: {:?}", codec.id());
+
+        if codec.medium() == ffmpeg::media::Type::Video {
+            if let Ok(video) = codec.decoder().video() {
+                println!("\tbit_rate: {}", video.bit_rate());
+                println!("\tmax_rate: {}", video.max_bit_rate());
+                println!("\tdelay: {}", video.delay());
+                println!("\tvideo.width: {}", video.width());
+                println!("\tvideo.height: {}", video.height());
+                println!("\tvideo.format: {:?}", video.format());
+                println!("\tvideo.has_b_frames: {}", video.has_b_frames());
+                println!("\tvideo.aspect_ratio: {}", video.aspect_ratio());
+                println!("\tvideo.color_space: {:?}", video.color_space());
+                println!("\tvideo.color_range: {:?}", video.color_range());
+                println!("\tvideo.color_primaries: {:?}", video.color_primaries());
+                println!(
+                    "\tvideo.color_transfer_characteristic: {:?}",
+                    video.color_transfer_characteristic()
+                );
+                println!("\tvideo.chroma_location: {:?}", video.chroma_location());
+                println!("\tvideo.references: {}", video.references());
+                println!("\tvideo.intra_dc_precision: {}", video.intra_dc_precision());
+            }
+        } else if codec.medium() == ffmpeg::media::Type::Audio {
+            if let Ok(audio) = codec.decoder().audio() {
+                println!("\tbit_rate: {}", audio.bit_rate());
+                println!("\tmax_rate: {}", audio.max_bit_rate());
+                println!("\tdelay: {}", audio.delay());
+                println!("\taudio.rate: {}", audio.rate());
+                println!("\taudio.channels: {}", audio.channels());
+                println!("\taudio.format: {:?}", audio.format());
+                println!("\taudio.frames: {}", audio.frames());
+                println!("\taudio.align: {}", audio.align());
+                println!("\taudio.channel_layout: {:?}", audio.channel_layout());
+            }
+        }
+    }
+    Ok(())
 }
 

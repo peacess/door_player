@@ -181,8 +181,10 @@ impl PlayCtrl {
         let _ = self.update_audio_clock(frame.pts, frame.duration);
         let mut producer = self.producer.lock();
         while producer.free_len() < frame.samples.len() {
+            // log::info!("play audio: for : {}", producer.free_len());
             spin_sleep::sleep(Duration::from_millis(10));
         }
+        // log::info!("play audio out: {}", frame.samples.len());
         if self.audio_dev.get_mute() {
             for f in frame.samples.as_mut_slice() {
                 *f = 0.0;
