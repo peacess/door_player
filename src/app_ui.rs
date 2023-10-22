@@ -1,7 +1,8 @@
 use std::{fs, path};
+use std::path::PathBuf;
 
 use eframe::Frame;
-use egui::{Event, Key, PointerButton, Ui};
+use egui::{Context, DroppedFile, Event, Key, PointerButton, Ui};
 
 use crate::kits::Shared;
 use crate::player::{CommandGo, CommandUi, Player, PlayerState};
@@ -78,25 +79,13 @@ impl AppUi {
 
     pub(crate) fn handle_key_no_player(&mut self, ui: &mut Ui, ctx: &egui::Context) {
         ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+
         ui.input(|k| {
             for e in &k.events {
                 match e {
                     Event::Key { key: Key::Space, pressed: true, .. } | Event::PointerButton { button: PointerButton::Primary, pressed: true, .. } => {
-                        if let Some(buf) = rfd::FileDialog::new().add_filter("videos", &["mp4"]).pick_file() {
-                            let f = buf.as_path().to_string_lossy().to_string();
-                            self.media_path = f;
-                            if !self.media_path.is_empty() {
-                                let f = self.media_path.clone();
-                                // self.media_path = "".to_owned();
-                                match Player::new(ctx, self.command_ui.clone(), &f) {
-                                    Ok(p) => {
-                                        self.player = Some(p);
-                                    }
-                                    Err(e) => {
-                                        log::error!("{}", e);
-                                    }
-                                }
-                            }
+                        if let Some(buf) = Self::select_file() {
+                            self.open_file(ctx, buf);
                         }
                     }
                     _ => {}
@@ -195,6 +184,27 @@ impl AppUi {
             }
         }
     }
+
+    fn select_file() -> Option<PathBuf> {
+        rfd::FileDialog::new().add_filter("videos", &["mp4","mkv"]).pick_file()
+    }
+
+    fn open_file(&mut self, ctx: &Context, buf: PathBuf) {
+        let f = buf.as_path().to_string_lossy().to_string();
+        self.media_path = f;
+        if !self.media_path.is_empty() {
+            let f = self.media_path.clone();
+            // self.media_path = "".to_owned();
+            match Player::new(ctx, self.command_ui.clone(), &f) {
+                Ok(p) => {
+                    self.player = Some(p);
+                }
+                Err(e) => {
+                    log::error!("{}", e);
+                }
+            }
+        }
+    }
 }
 
 unsafe impl Send for AppUi {}
@@ -269,21 +279,8 @@ impl eframe::App for AppUi {
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         if ui.button("Open").clicked() {
-                            if let Some(buf) = rfd::FileDialog::new().add_filter("videos", &["mp4"]).pick_file() {
-                                let f = buf.as_path().to_string_lossy().to_string();
-                                self.media_path = f;
-                                if !self.media_path.is_empty() {
-                                    let f = self.media_path.clone();
-                                    // self.media_path = "".to_owned();
-                                    match Player::new(ctx, self.command_ui.clone(), &f) {
-                                        Ok(p) => {
-                                            self.player = Some(p);
-                                        }
-                                        Err(e) => {
-                                            log::error!("{}", e);
-                                        }
-                                    }
-                                }
+                            if let Some(buf) = Self::select_file() {
+                                self.open_file(ctx, buf);
                             }
                         }
                     });
@@ -408,6 +405,18 @@ impl eframe::App for AppUi {
 
         egui::CentralPanel::default().frame(frame)
             .show(ctx, |ui| {
+                {
+                    ui.input(|state|{
+                        if !state.raw.dropped_files.is_empty() {
+                            match state.raw.dropped_files.first() {
+                                Some(DroppedFile{path: Some(first),..}) => {
+                                    self.open_file(ctx,first.clone())
+                                }
+                                _ =>{}
+                            }
+                        }
+                    });
+                }
                 if self.player.is_some() {
                     self.handle_key_player(ui, ctx);
                 } else {
