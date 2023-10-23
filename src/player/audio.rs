@@ -107,7 +107,7 @@ impl AudioDevice {
                 let s = &mut data[done..];
                 s.fill(T::EQUILIBRIUM);
             }
-        }else {
+        } else {
             data.fill(T::EQUILIBRIUM);
         }
         // for d in data {

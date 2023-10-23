@@ -38,9 +38,6 @@ impl AppUi {
             ui.input(|k| {
                 for e in &k.events {
                     match e {
-                        Event::Key { key: Key::Escape, pressed: true, .. } => {
-                            player.command_ui.set(CommandUi::FullscreenToggle);
-                        }
                         Event::Key { key, pressed: true, .. } => {
                             match *key {
                                 Key::ArrowLeft => {
@@ -186,7 +183,7 @@ impl AppUi {
     }
 
     fn select_file() -> Option<PathBuf> {
-        rfd::FileDialog::new().add_filter("videos", &["mp4","mkv"]).pick_file()
+        rfd::FileDialog::new().add_filter("videos", &["mp4", "mkv"]).pick_file()
     }
 
     fn open_file(&mut self, ctx: &Context, buf: PathBuf) {
@@ -406,13 +403,22 @@ impl eframe::App for AppUi {
         egui::CentralPanel::default().frame(frame)
             .show(ctx, |ui| {
                 {
-                    ui.input(|state|{
+                    ui.input(|state| {
                         if !state.raw.dropped_files.is_empty() {
                             match state.raw.dropped_files.first() {
-                                Some(DroppedFile{path: Some(first),..}) => {
-                                    self.open_file(ctx,first.clone())
+                                Some(DroppedFile { path: Some(first), .. }) => {
+                                    self.open_file(ctx, first.clone())
                                 }
-                                _ =>{}
+                                _ => {}
+                            }
+                        }
+                        for e in &state.events {
+                            match e {
+                                Event::Key { key: Key::Escape, pressed: true, .. } => {
+                                    self.command_ui.set(CommandUi::Close);
+                                    break;
+                                }
+                                _ => {}
                             }
                         }
                     });

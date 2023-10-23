@@ -72,8 +72,8 @@ impl Clock {
 #[derive(Clone)]
 pub struct PlayCtrl {
     pub player_state: Shared<PlayerState>,
-    /// 解码开始时间, 也是音视频的起始时间
-    start: Instant,
+    // /// 解码开始时间, 也是音视频的起始时间
+    // start: Instant,
     /// 解封装(取包)完成
     packet_finished: Arc<AtomicBool>,
     /// 视频播放线程完成
@@ -118,7 +118,7 @@ impl PlayCtrl {
 
         Self {
             player_state: Shared::new(PlayerState::Paused),
-            start,
+            // start,
             packet_finished: demux_finished,
             video_finished,
             video_clock,

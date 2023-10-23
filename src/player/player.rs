@@ -9,7 +9,6 @@ use egui::{Align2, Color32, FontId, Image, Rect, Response, Rounding, Sense, Spin
 use egui::epaint::Shadow;
 use egui::load::SizedTexture;
 use ffmpeg::{Rational, Rescale, rescale};
-use ffmpeg::decoder::Video;
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
@@ -54,9 +53,9 @@ impl Player {
         let _ = print_meda_info(&mut format_input);
         let max_audio_volume = 1.;
         let mut texture_handle = Self::default_texture_handle(ctx);
-        texture_handle.set(Self::frame_to_color_image(&fist_frame)?,egui::TextureOptions::LINEAR);
+        texture_handle.set(Self::frame_to_color_image(&fist_frame)?, egui::TextureOptions::LINEAR);
         let play_ctrl = {
-            let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820*3).split();
+            let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820 * 3).split();
             let audio_dev = Arc::new(AudioDevice::new(consumer)?);
             audio_dev.resume();
             PlayCtrl::new(format_input.duration(), producer, audio_dev, texture_handle)
@@ -81,8 +80,8 @@ impl Player {
             let mut video_decoder = video_context.decoder().video()?;
             let mut thread_conf = video_decoder.threading();
             log::info!("video: {:?}", &thread_conf);
-            thread_conf.count = 1;
-            thread_conf.kind = ffmpeg::threading::Type::Slice;
+            thread_conf.count = 2;
+            thread_conf.kind = ffmpeg::threading::Type::None;
             video_decoder.set_threading(thread_conf);
             player.width = video_decoder.width();
             player.height = video_decoder.height();
@@ -97,8 +96,8 @@ impl Player {
             let mut audio_decoder = audio_context.decoder().audio()?;
             let mut thread_conf = audio_decoder.threading();
             log::info!("audio: {:?}", &thread_conf);
-            thread_conf.count = 1;
-            thread_conf.kind = ffmpeg::threading::Type::Slice;
+            thread_conf.count = 2;
+            thread_conf.kind = ffmpeg::threading::Type::None;
             audio_decoder.set_threading(thread_conf);
             (audio_index, audio_decoder)
         };
@@ -122,7 +121,7 @@ impl Player {
         //开启 视频播放
         player.video_play_run(ctx.clone(), video_frame_rx);
         //开启 读frame线程
-        player.read_packet_run(format_input, ctx.clone(),  audio_packet_sender, audio_index,
+        player.read_packet_run(format_input, audio_packet_sender, audio_index,
                                video_packet_sender, video_index);
 
         // player.play_ctrl.set_pause(false);
@@ -169,7 +168,7 @@ impl Player {
     }
 
     fn first_frame(input: &mut ffmpeg::format::context::Input) -> Result<ffmpeg::frame::Video, anyhow::Error> {
-        let mut video_stream = input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
+        let video_stream = input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
         let video_index = video_stream.index();
         let video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
         let mut video_decoder = video_context.decoder().video()?;
@@ -185,7 +184,7 @@ impl Player {
                         log::debug!("{}", e);
                     }
                     Ok(_) => {
-                       return Ok(frame);
+                        return Ok(frame);
                     }
                 }
             }
@@ -201,7 +200,7 @@ impl Player {
                 audio_decoder.channel_layout(),
                 audio_decoder.rate() as u32,
                 to_sample(stream_config.sample_format()),
-                audio_decoder.channel_layout(),
+                ffmpeg::ChannelLayout::STEREO, //ChannelLayout::STEREO,
                 stream_config.sample_rate().0,
             ) {
                 Err(e) => {
@@ -462,10 +461,9 @@ impl Player {
         });
     }
 
-    fn read_packet_run(&self, mut input: ffmpeg::format::context::Input,
-                       ctx: egui::Context, audio_deque: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize,
+    fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize,
                        video_deque: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize) {
-        let mut play_ctrl = self.play_ctrl.clone();
+        let play_ctrl = self.play_ctrl.clone();
         let duration = input.duration();
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
             'PACKETS: loop {
