@@ -39,7 +39,7 @@ pub struct Player {
 
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
-    pub fn new(ctx: &egui::Context, command_ui: Shared<CommandUi>, file: &str) -> Result<Player, anyhow::Error> {
+    pub fn new(ctx: &egui::Context, mut texture_handle: egui::TextureHandle, command_ui: Shared<CommandUi>, file: &str) -> Result<Player, anyhow::Error> {
         //打开文件
         let mut format_input = ffmpeg::format::input(&path::Path::new(file))?;
         let fist_frame = Self::first_frame(&mut format_input)?;
@@ -52,7 +52,6 @@ impl Player {
         }
         let _ = print_meda_info(&mut format_input);
         let max_audio_volume = 1.;
-        let mut texture_handle = Self::default_texture_handle(ctx);
         texture_handle.set(Self::frame_to_color_image(&fist_frame)?, egui::TextureOptions::LINEAR);
         let play_ctrl = {
             let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820 * 3).split();

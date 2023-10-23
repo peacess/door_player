@@ -21,7 +21,7 @@ pub struct AppUi {
 }
 
 impl AppUi {
-    pub(crate) fn handle_key_player(&mut self, ui: &mut Ui, _ctx: &egui::Context) {
+    pub(crate) fn handle_key_player(&mut self, ui: &mut Ui, ctx: &egui::Context) {
         if let Some(player) = &mut self.player {
             let p = {
                 if self.no_scale {
@@ -39,7 +39,7 @@ impl AppUi {
                 for e in &k.events {
                     match e {
                         Event::Key { key, pressed: true, .. } => {
-                            match *key {
+                            match key {
                                 Key::ArrowLeft => {
                                     player.go_back_ui();
                                 }
@@ -63,7 +63,6 @@ impl AppUi {
                                         _ => {}
                                     }
                                 }
-
                                 _ => {}
                             }
                         }
@@ -72,6 +71,27 @@ impl AppUi {
                 }
             });
         }
+
+        ui.input(|k| {
+            for e in &k.events {
+                match e {
+                    Event::Key { key, pressed: true, .. } => {
+                        match key {
+                            Key::PageDown => {
+                                let file = AppUi::next_file(&self.media_path);
+                                self.open_file(ctx, file.into());
+                            }
+                            Key::PageUp => {
+                                let file = AppUi::pre_file(&self.media_path);
+                                self.open_file(ctx, file.into());
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        });
     }
 
     pub(crate) fn handle_key_no_player(&mut self, ui: &mut Ui, ctx: &egui::Context) {
@@ -187,14 +207,17 @@ impl AppUi {
     }
 
     fn open_file(&mut self, ctx: &Context, buf: PathBuf) {
-        let f = buf.as_path().to_string_lossy().to_string();
-        self.media_path = f;
+        self.media_path = buf.to_string_lossy().to_string();
         if !self.media_path.is_empty() {
-            let f = self.media_path.clone();
-            // self.media_path = "".to_owned();
-            match Player::new(ctx, self.command_ui.clone(), &f) {
+            let texture_handle = match &self.player {
+                Some(p) => p.texture_handle.clone(),
+                None => Player::default_texture_handle(ctx),
+            };
+            match Player::new(ctx, texture_handle, self.command_ui.clone(), &self.media_path) {
                 Ok(p) => {
-                    self.player = Some(p);
+                    if let Some(mut p) = self.player.replace(p) {
+                        p.stop();
+                    }
                 }
                 Err(e) => {
                     log::error!("{}", e);
@@ -290,35 +313,23 @@ impl eframe::App for AppUi {
 
                     if !self.media_path.is_empty() {
                         ui.label(self.media_path.clone());
-                        let mut file = String::default();
                         ui.horizontal(|ui| {
-                            if ui.button("Next file").clicked() {
-                                file = AppUi::next_file(&self.media_path);
+                            if ui.button("Pre file").clicked() {
+                                let file = AppUi::pre_file(&self.media_path);
+                                self.open_file(ctx, file.into());
                             }
                         });
                         ui.horizontal(|ui| {
                             if ui.button("ReOpen").clicked() {
-                                file = self.media_path.clone();
+                                self.open_file(ctx, self.media_path.clone().into());
                             }
                         });
                         ui.horizontal(|ui| {
-                            if ui.button("Pre file").clicked() {
-                                file = AppUi::pre_file(&self.media_path);
+                            if ui.button("Next file").clicked() {
+                                let file = AppUi::next_file(&self.media_path);
+                                self.open_file(ctx, file.into());
                             }
                         });
-
-                        if !file.is_empty() {
-                            self.media_path = file;
-                            let f = self.media_path.clone();
-                            match Player::new(ctx, self.command_ui.clone(), &f) {
-                                Ok(p) => {
-                                    self.player = Some(p);
-                                }
-                                Err(e) => {
-                                    log::error!("{}", e);
-                                }
-                            }
-                        }
                     }
                     if let Some(player) = &mut self.player {
                         ui.horizontal(|ui| {
