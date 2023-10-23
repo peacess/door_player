@@ -172,7 +172,7 @@ impl PlayCtrl {
 
     /// 获取声音设备的默认配置
     pub fn audio_config(&self) -> cpal::SupportedStreamConfig {
-        self.audio_dev.stream_config()
+        self.audio_dev.stream_input_config()
     }
 
     /// 播放音频帧

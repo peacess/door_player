@@ -200,7 +200,7 @@ impl Player {
                 audio_decoder.channel_layout(),
                 audio_decoder.rate() as u32,
                 to_sample(stream_config.sample_format()),
-                ffmpeg::ChannelLayout::STEREO, //ChannelLayout::STEREO,
+                ffmpeg::ChannelLayout::default(stream_config.channels() as i32),//ffmpeg::ChannelLayout::STEREO,
                 stream_config.sample_rate().0,
             ) {
                 Err(e) => {
