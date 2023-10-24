@@ -4,6 +4,7 @@ pub use consts::*;
 pub use kits::*;
 pub use play_ctrl::*;
 pub use player::*;
+pub use subtitle::*;
 pub use video::*;
 
 mod kits;
@@ -13,3 +14,4 @@ mod play_ctrl;
 mod audio;
 mod consts;
 mod command;
+mod subtitle;

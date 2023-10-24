@@ -13,7 +13,7 @@ use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
 use crate::kits::Shared;
-use crate::player::{CommandGo, CommandUi, MAX_DIFF_MOVE_MOUSE, PlayerState};
+use crate::player::{CommandGo, CommandUi, MAX_DIFF_MOVE_MOUSE, PlayerState, SubtitleFrame};
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::kits::timestamp_to_millisecond;
@@ -79,8 +79,8 @@ impl Player {
             let mut video_decoder = video_context.decoder().video()?;
             let mut thread_conf = video_decoder.threading();
             log::info!("video: {:?}", &thread_conf);
-            thread_conf.count = 2;
-            thread_conf.kind = ffmpeg::threading::Type::None;
+            thread_conf.count = 3;
+            thread_conf.kind = ffmpeg::threading::Type::Frame;
             video_decoder.set_threading(thread_conf);
             player.width = video_decoder.width();
             player.height = video_decoder.height();
@@ -92,36 +92,46 @@ impl Player {
             let audio_stream = format_input.streams().best(ffmpeg::media::Type::Audio).ok_or(ffmpeg::Error::InvalidData)?;
             let audio_index = audio_stream.index();
             let audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
-            let mut audio_decoder = audio_context.decoder().audio()?;
-            let mut thread_conf = audio_decoder.threading();
-            log::info!("audio: {:?}", &thread_conf);
-            thread_conf.count = 2;
-            thread_conf.kind = ffmpeg::threading::Type::None;
-            audio_decoder.set_threading(thread_conf);
+            let audio_decoder = audio_context.decoder().audio()?;
             (audio_index, audio_decoder)
+        };
+
+        // 字幕
+        let (subtitle_index, subtitle_decoder) = {
+            let subtitle_stream = format_input.streams().best(ffmpeg::media::Type::Subtitle).ok_or(ffmpeg::Error::InvalidData)?;
+            let subtitle_index = subtitle_stream.index();
+            let context = ffmpeg::codec::context::Context::from_parameters(subtitle_stream.parameters())?;
+            let subtitle_decoder = context.decoder().subtitle()?;
+            (subtitle_index, subtitle_decoder)
         };
 
         let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(AUDIO_PACKET_QUEUE_SIZE);
         let (video_packet_sender, video_packet_receiver) = kanal::bounded(VIDEO_PACKET_QUEUE_SIZE);
+        let (subtitle_packet_sender, subtitle_packet_receiver) = kanal::bounded(VIDEO_PACKET_QUEUE_SIZE);
 
-        let (audio_frame_tx, audio_frame_rx) = kanal::bounded::<AudioFrame>(AUDIO_FRAME_QUEUE_SIZE);
-        let (video_frame_tx, video_frame_rx) = kanal::bounded::<VideoFrame>(VIDEO_FRAME_QUEUE_SIZE);
+        let (audio_frame_sender, audio_frame_receiver) = kanal::bounded(AUDIO_FRAME_QUEUE_SIZE);
+        let (video_frame_sender, video_frame_receiver) = kanal::bounded(VIDEO_FRAME_QUEUE_SIZE);
+        let (subtitle_frame_sender, subtitle_frame_receiver) = kanal::bounded(VIDEO_FRAME_QUEUE_SIZE);
 
         let video_time_base = format_input.stream(video_index).expect("").time_base();
         // .ok_or_else(|| PlayerError::Error(format!("根据 stream_idx 无法获取到 stream")))?
         // .time_base;
 
         //开启 音频解码线程
-        player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_tx);
+        player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_sender);
         //开启 音频播放线程
-        player.audio_play_run(audio_frame_rx);
+        player.audio_play_run(audio_frame_receiver);
         //开启 视频解码线程
-        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_tx, video_time_base);
+        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_sender, video_time_base);
         //开启 视频播放
-        player.video_play_run(ctx.clone(), video_frame_rx);
+        player.video_play_run(ctx.clone(), video_frame_receiver);
+        player.subtitle_decode_run(subtitle_decoder, subtitle_packet_receiver, subtitle_frame_sender);
+        player.subtitle_play_run(subtitle_frame_receiver);
+
+
         //开启 读frame线程
         player.read_packet_run(format_input, audio_packet_sender, audio_index,
-                               video_packet_sender, video_index);
+                               video_packet_sender, video_index, subtitle_packet_sender, subtitle_index);
 
         // player.play_ctrl.set_pause(false);
         Ok(player)
@@ -383,6 +393,7 @@ impl Player {
                         }
                         Ok(_) => {}
                     }
+                    spin_sleep::sleep(std::time::Duration::from_millis(2));
                 }
             }
             match packet_receiver.recv() {
@@ -396,16 +407,9 @@ impl Player {
                         }
                         Ok(_) => {}
                     }
+                    spin_sleep::sleep(std::time::Duration::from_millis(2));
                 }
-                Ok(None) => {
-                    // match video_decoder.send_eof() {
-                    //     Err(e) => {
-                    //         log::error!("{}", e);
-                    //     }
-                    //     Ok(_) => {}
-                    // }
-                    // video_decoder.flush();
-                }
+                Ok(None) => {}
             }
         });
     }
@@ -460,8 +464,95 @@ impl Player {
         });
     }
 
+    ///  [ass to image](https://www.cnblogs.com/tocy/p/subtitle-format-libass-tutorial.html)
+    fn subtitle_decode_run(&self, mut subtitle_decoder: ffmpeg::decoder::Subtitle, packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, subtitle_deque: Sender<SubtitleFrame>) {
+        let play_ctrl = self.play_ctrl.clone();
+        let _ = std::thread::Builder::new().name("subtitle decode".to_string()).spawn(move || loop {
+            if PlayerState::Stopped == play_ctrl.player_state.get() {
+                log::info!("subtitle decode exit");
+                break;
+            }
+
+            match packet_receiver.recv() {
+                Err(e) => {
+                    log::error!("{}", e);
+                }
+                Ok(None) => {}
+                Ok(Some(packet)) => {
+                    let mut sub = ffmpeg::Subtitle::default();
+                    match subtitle_decoder.decode(&packet, &mut sub) {
+                        Err(e) => {
+                            log::error!("{}", e);
+                        }
+                        Ok(b) => {
+                            if b {
+                                let pts = sub.pts().unwrap_or_default() as f64;
+                                let duration = {
+                                    packet.duration() as f64
+                                };
+                                let text = {
+                                    let mut sub_text = String::default();
+                                    for rect in sub.rects() {
+                                        let rr = unsafe { &*rect.as_ptr() };
+                                        let line = match rect {
+                                            ffmpeg::subtitle::Rect::None(_) => String::default(),
+                                            ffmpeg::subtitle::Rect::Bitmap(_) => {
+                                                //todo
+                                                String::default()
+                                            }
+                                            ffmpeg::subtitle::Rect::Text(text) => {
+                                                text.get().to_string()
+                                            }
+                                            ffmpeg::subtitle::Rect::Ass(ass) => {
+                                                ass.get().to_string()
+                                            }
+                                        };
+                                        if sub_text.is_empty() {
+                                            sub_text = line;
+                                        } else {
+                                            sub_text.push_str("\n");
+                                            sub_text.push_str(&line);
+                                        }
+                                    }
+                                    sub_text
+                                };
+                                let subtitle_frame = SubtitleFrame {
+                                    sub_text: text,
+                                    pts,
+                                    duration,
+                                };
+                                match subtitle_deque.send(subtitle_frame) {
+                                    Err(e) => {
+                                        log::error!("{}", e);
+                                    }
+                                    Ok(_) => {}
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    fn subtitle_play_run(&self, frame_deque: Receiver<SubtitleFrame>) {
+        let mut play_ctrl = self.play_ctrl.clone();
+        let _ = std::thread::Builder::new().name("subtitle play".to_string()).spawn(move || loop {
+            if PlayerState::Stopped == play_ctrl.player_state.get() {
+                log::info!("subtitle play exit");
+                break;
+            }
+
+            match frame_deque.recv() {
+                Err(e) => {
+                    log::error!("{}", e);
+                }
+                Ok(frame) => {}
+            }
+        });
+    }
+
     fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize,
-                       video_deque: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize) {
+                       video_deque: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize, subtitle_deque: Sender<Option<ffmpeg::Packet>>, subtitle_index: usize) {
         let play_ctrl = self.play_ctrl.clone();
         let duration = input.duration();
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
@@ -547,6 +638,10 @@ impl Player {
                                     play_ctrl.video_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
                                 }
                                 if let Err(e) = video_deque.send(Some(packet)) {
+                                    log::error!("{}", e);
+                                }
+                            } else if packet.stream() == subtitle_index {
+                                if let Err(e) = subtitle_deque.send(Some(packet)) {
                                     log::error!("{}", e);
                                 }
                             }
