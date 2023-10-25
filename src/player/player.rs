@@ -126,8 +126,6 @@ impl Player {
         //开启 视频播放
         player.video_play_run(ctx.clone(), video_frame_receiver);
         player.subtitle_decode_run(subtitle_decoder, subtitle_packet_receiver, subtitle_frame_sender);
-        player.subtitle_play_run(subtitle_frame_receiver);
-
 
         //开启 读frame线程
         player.read_packet_run(format_input, audio_packet_sender, audio_index,
@@ -174,6 +172,22 @@ impl Player {
             )
         }
         Ok(egui::ColorImage { size, pixels })
+    }
+
+    fn graph(dec_ctx: &ffmpeg::decoder::Video) -> Result<ffmpeg::filter::Graph, ffmpeg::Error> {
+        let mut graph = ffmpeg::filter::Graph::new();
+        let src = ffmpeg::filter::find("buffer").ok_or(ffmpeg::Error::OptionNotFound)?;
+        let sink = ffmpeg::filter::find("buffersink").ok_or(ffmpeg::Error::OptionNotFound)?;
+        let args = format!("video_size={}x{}:pix_fmt={}:time_base={}/{}:pixel_aspect={}/{}",
+                           dec_ctx.width(), dec_ctx.height(), ffmpeg::ffi::AVPixelFormat::from(dec_ctx.format()) as i32,
+                           dec_ctx.time_base().numerator(), dec_ctx.time_base().denominator(),
+                           dec_ctx.aspect_ratio().numerator(),
+                           dec_ctx.aspect_ratio().denominator());
+
+        let _ = graph.add(&src, "in", &args)?;
+        let  _= graph.add(&sink, "out", "")?;
+        graph.validate()?;
+        Ok(graph)
     }
 
     fn first_frame(input: &mut ffmpeg::format::context::Input) -> Result<ffmpeg::frame::Video, anyhow::Error> {
@@ -465,6 +479,7 @@ impl Player {
     }
 
     ///  [ass to image](https://www.cnblogs.com/tocy/p/subtitle-format-libass-tutorial.html)
+    /// [merge frame] https://github.com/nldzsz/ffmpeg-demo
     fn subtitle_decode_run(&self, mut subtitle_decoder: ffmpeg::decoder::Subtitle, packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, subtitle_deque: Sender<SubtitleFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let _ = std::thread::Builder::new().name("subtitle decode".to_string()).spawn(move || loop {
@@ -472,6 +487,8 @@ impl Player {
                 log::info!("subtitle decode exit");
                 break;
             }
+
+            // use ffmpeg and ass to render subtitle
 
             match packet_receiver.recv() {
                 Err(e) => {
@@ -493,7 +510,6 @@ impl Player {
                                 let text = {
                                     let mut sub_text = String::default();
                                     for rect in sub.rects() {
-                                        let rr = unsafe { &*rect.as_ptr() };
                                         let line = match rect {
                                             ffmpeg::subtitle::Rect::None(_) => String::default(),
                                             ffmpeg::subtitle::Rect::Bitmap(_) => {
@@ -531,22 +547,6 @@ impl Player {
                         }
                     }
                 }
-            }
-        });
-    }
-    fn subtitle_play_run(&self, frame_deque: Receiver<SubtitleFrame>) {
-        let mut play_ctrl = self.play_ctrl.clone();
-        let _ = std::thread::Builder::new().name("subtitle play".to_string()).spawn(move || loop {
-            if PlayerState::Stopped == play_ctrl.player_state.get() {
-                log::info!("subtitle play exit");
-                break;
-            }
-
-            match frame_deque.recv() {
-                Err(e) => {
-                    log::error!("{}", e);
-                }
-                Ok(frame) => {}
             }
         });
     }
