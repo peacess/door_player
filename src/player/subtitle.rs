@@ -3,8 +3,11 @@ use std::fmt::{Debug, Formatter};
 #[derive(Default, Clone)]
 pub struct SubtitleFrame {
     pub pts: f64,
-    pub duration: f64,
-    pub sub_text: String,
+    pub duration: i64,
+    pub pure_text: String,
+    pub ass: String, //当数据类型为ass时，的原始数据
+    pub width: u32,
+    pub height: u32,
 }
 
 impl Debug for SubtitleFrame {
@@ -13,7 +16,7 @@ impl Debug for SubtitleFrame {
             // .field("color_image", &self.color_image)
             .field("pts", &self.pts)
             .field("duration", &self.duration)
-            .field("title", &self.sub_text)
+            .field("title", &self.pure_text)
             .finish()
     }
 }
@@ -22,12 +25,13 @@ impl SubtitleFrame {
     pub fn new(
         sub_text: String,
         pts: f64,
-        duration: f64,
+        duration: i64,
     ) -> Self {
         Self {
-            sub_text,
+            pure_text: sub_text,
             pts,
             duration,
+            ..Default::default()
         }
     }
 }

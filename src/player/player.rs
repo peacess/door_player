@@ -122,7 +122,7 @@ impl Player {
         //开启 音频播放线程
         player.audio_play_run(audio_frame_receiver);
         //开启 视频解码线程
-        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_sender, video_time_base);
+        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_sender, video_time_base, subtitle_frame_receiver);
         //开启 视频播放
         player.video_play_run(ctx.clone(), video_frame_receiver);
         player.subtitle_decode_run(subtitle_decoder, subtitle_packet_receiver, subtitle_frame_sender);
@@ -160,7 +160,7 @@ impl Player {
         let pixel_size_bytes = 3;
         let byte_width: usize = pixel_size_bytes * rgb_frame.width() as usize;
         let height: usize = rgb_frame.height() as usize;
-        let mut pixels = vec![];
+        let mut pixels = Vec::with_capacity(height * rgb_frame.width() as usize / pixel_size_bytes);
         for line in 0..height {
             let begin = line * stride;
             let end = begin + byte_width;
@@ -357,22 +357,53 @@ impl Player {
         });
     }
 
-    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, video_deque: Sender<VideoFrame>, _: Rational) {
+    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, video_deque: Sender<VideoFrame>, _: Rational, subtitle_frame_receiver: Receiver<SubtitleFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let width = video_decoder.width() as usize;
         let height = video_decoder.height() as usize;
 
-        let _ = std::thread::Builder::new().name("video decode".to_string()).spawn(move || loop {
+        let _ = std::thread::Builder::new().name("video decode".to_string()).spawn(move || 'RUN: loop {
+            let mut graph = {
+                match Self::graph(&video_decoder) {
+                    Err(e) => {
+                        log::error!("{}", e);
+                        return;
+                    }
+                    Ok(t) => t,
+                }
+            };
+
+            // let mut filter_out = graph.get("out").expect("");
+            // let mut filter_in = graph.get("in").expect("");
+
             if PlayerState::Stopped == play_ctrl.player_state.get() {
                 log::info!("video decode exit");
                 break;
             }
-            let mut frame = ffmpeg::frame::Video::empty();
-            match video_decoder.receive_frame(&mut frame) {
+            let mut v_frame = ffmpeg::frame::Video::empty();
+            match video_decoder.receive_frame(&mut v_frame) {
                 Err(e) => {
                     log::debug!("{}", e);
                 }
                 Ok(_) => {
+                    let mut err_count = 0;
+                    let frame = loop {
+                        let mut filter_frame = ffmpeg::frame::Video::empty();
+                        if let Err(e) = graph.get("in").expect("").source().add(&v_frame) {
+                            log::error!("{}", e);
+                            continue 'RUN;
+                        }
+
+                        if let Err(e) = graph.get("out").expect("").sink().frame(&mut filter_frame) {
+                            log::error!("{}", e);
+                            err_count += 1;
+                        }else {
+                            break filter_frame;
+                        }
+                        if err_count > 3 {
+                            continue 'RUN;
+                        }
+                    };
                     let color_image = match Self::frame_to_color_image(&frame) {
                         Err(e) => {
                             log::error!("{}", e);
@@ -487,7 +518,6 @@ impl Player {
                 log::info!("subtitle decode exit");
                 break;
             }
-
             // use ffmpeg and ass to render subtitle
 
             match packet_receiver.recv() {
@@ -503,16 +533,19 @@ impl Player {
                         }
                         Ok(b) => {
                             if b {
-                                let pts = sub.pts().unwrap_or_default() as f64;
-                                let duration = {
-                                    packet.duration() as f64
+                                let mut subtitle_frame = SubtitleFrame {
+                                    pts: sub.pts().unwrap_or_default() as f64,
+                                    duration: packet.duration(),
+                                    ..Default::default()
                                 };
-                                let text = {
+                                let sub_text = {
                                     let mut sub_text = String::default();
                                     for rect in sub.rects() {
                                         let line = match rect {
                                             ffmpeg::subtitle::Rect::None(_) => String::default(),
-                                            ffmpeg::subtitle::Rect::Bitmap(_) => {
+                                            ffmpeg::subtitle::Rect::Bitmap(bitmap) => {
+                                                subtitle_frame.width = bitmap.width();
+                                                subtitle_frame.height = bitmap.height();
                                                 //todo
                                                 String::default()
                                             }
@@ -532,11 +565,7 @@ impl Player {
                                     }
                                     sub_text
                                 };
-                                let subtitle_frame = SubtitleFrame {
-                                    sub_text: text,
-                                    pts,
-                                    duration,
-                                };
+
                                 match subtitle_deque.send(subtitle_frame) {
                                     Err(e) => {
                                         log::error!("{}", e);
