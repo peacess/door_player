@@ -39,7 +39,7 @@ pub struct Player {
 
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
-    pub fn new(ctx: &egui::Context, mut texture_handle: egui::TextureHandle, command_ui: Shared<CommandUi>, file: &str) -> Result<Player, anyhow::Error> {
+    pub fn new(ctx: &egui::Context, mut texture_handle: egui::TextureHandle, command_ui: Shared<CommandUi>, file: &String) -> Result<Player, anyhow::Error> {
         //打开文件
         let mut format_input = ffmpeg::format::input(&path::Path::new(file))?;
         let fist_frame = Self::first_frame(&mut format_input)?;
@@ -935,7 +935,7 @@ impl Player {
                     self.set_mute(!mute);
                 }
 
-                let sound_slider_outer_height = 496.;
+                let sound_slider_outer_height = 124.;
                 let sound_slider_margin = 5.;
                 let sound_slider_opacity = 100;
                 let mut sound_slider_rect = sound_icon_rect;
@@ -1034,11 +1034,11 @@ impl Player {
     //     self.next_packet_frame.set(PacketFrame::Frame);
     // }
 
-    pub fn go_ahead_ui(&mut self) {
-        self.command_go.set(self.command_go_ui.get());
+    pub fn go_ahead_ui(&mut self, command_go_ui: &Shared<CommandGo>) {
+        self.command_go.set(command_go_ui.get());
     }
-    pub fn go_back_ui(&mut self) {
-        match self.command_go_ui.get() {
+    pub fn go_back_ui(&mut self, command_go_ui: &Shared<CommandGo>) {
+        match command_go_ui.get() {
             CommandGo::Frame(t) => self.command_go.set(CommandGo::Frame(-t)),
             CommandGo::Packet(t) => self.command_go.set(CommandGo::Packet(-t)),
             CommandGo::GoMs(t) => self.command_go.set(CommandGo::GoMs(-t)),

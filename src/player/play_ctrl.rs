@@ -97,9 +97,6 @@ pub struct PlayCtrl {
     pub video_elapsed_ms_override: Shared<i64>,
 
     pub command_go: Shared<CommandGo>,
-    /// ui界面使用
-    pub command_go_ui: Shared<CommandGo>,
-
 }
 
 impl PlayCtrl {
@@ -131,8 +128,7 @@ impl PlayCtrl {
             video_elapsed_ms: Shared::new(0),
             audio_elapsed_ms: Shared::new(0),
 
-            command_go: Shared::new(CommandGo::Packet(1)),
-            command_go_ui: Shared::new(CommandGo::Packet(1)),
+            command_go: Shared::new(CommandGo::None),
             duration,
             duration_ms: timestamp_to_millisecond(duration, AV_TIME_BASE_RATIONAL),
             video_elapsed_ms_override: Shared::new(-1),

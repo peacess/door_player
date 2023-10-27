@@ -15,9 +15,8 @@ pub struct AppUi {
     no_scale: bool,
 
     command_ui: Shared<CommandUi>,
-
-    // stream_size_scale: f32,
-    // seek_frac: f32,
+    /// ui界面使用
+    pub command_go_ui: Shared<CommandGo>,
 }
 
 impl AppUi {
@@ -41,10 +40,10 @@ impl AppUi {
                         Event::Key { key, pressed: true, .. } => {
                             match key {
                                 Key::ArrowLeft => {
-                                    player.go_back_ui();
+                                    player.go_back_ui(&self.command_go_ui);
                                 }
                                 Key::ArrowRight => {
-                                    player.go_ahead_ui();
+                                    player.go_ahead_ui(&self.command_go_ui);
                                 }
                                 Key::ArrowUp => {}
                                 Key::ArrowDown => {}
@@ -95,8 +94,6 @@ impl AppUi {
     }
 
     pub(crate) fn handle_key_no_player(&mut self, ui: &mut Ui, ctx: &egui::Context) {
-        ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-
         ui.input(|k| {
             for e in &k.events {
                 match e {
@@ -239,6 +236,7 @@ impl Default for AppUi {
             media_path: String::default(),
             no_scale: false,
             command_ui: Shared::new(CommandUi::None),
+            command_go_ui: Shared::new(CommandGo::Packet(1)),
         }
     }
 }
@@ -333,15 +331,15 @@ impl eframe::App for AppUi {
                     }
                     if let Some(player) = &mut self.player {
                         ui.horizontal(|ui| {
-                            let (mut go_amount, mut go_packet) = match player.command_go_ui.get() {
+                            let (mut go_amount, mut go_packet) = match self.command_go_ui.get() {
                                 CommandGo::Packet(v) => (v, true),
                                 _ => (10, false),
                             };
                             if ui.checkbox(&mut go_packet, "go packets: ").changed() {
                                 if go_packet {
-                                    player.command_go_ui.set(CommandGo::Packet(go_amount));
+                                    self.command_go_ui.set(CommandGo::Packet(go_amount));
                                 } else {
-                                    player.command_go_ui.set(CommandGo::None);
+                                    self.command_go_ui.set(CommandGo::None);
                                 }
                             }
                             if go_packet {
@@ -349,21 +347,21 @@ impl eframe::App for AppUi {
                                 if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
                                     if let Ok(v) = str_amount.parse() {
                                         go_amount = v;
-                                        player.command_go_ui.set(CommandGo::Packet(go_amount));
+                                        self.command_go_ui.set(CommandGo::Packet(go_amount));
                                     }
                                 }
                             }
                         });
                         ui.horizontal(|ui| {
-                            let (mut go_amount, mut go_frame) = match player.command_go_ui.get() {
+                            let (mut go_amount, mut go_frame) = match self.command_go_ui.get() {
                                 CommandGo::Frame(v) => (v, true),
                                 _ => (5, false),
                             };
                             if ui.checkbox(&mut go_frame, "go frames: ").changed() {
                                 if go_frame {
-                                    player.command_go_ui.set(CommandGo::Frame(go_amount));
+                                    self.command_go_ui.set(CommandGo::Frame(go_amount));
                                 } else {
-                                    player.command_go_ui.set(CommandGo::None);
+                                    self.command_go_ui.set(CommandGo::None);
                                 }
                             }
                             if go_frame {
@@ -371,22 +369,22 @@ impl eframe::App for AppUi {
                                 if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
                                     if let Ok(v) = str_amount.parse() {
                                         go_amount = v;
-                                        player.command_go_ui.set(CommandGo::Frame(go_amount));
+                                        self.command_go_ui.set(CommandGo::Frame(go_amount));
                                     }
                                 }
                             }
                         });
 
                         ui.horizontal(|ui| {
-                            let (mut go_amount, mut seek_ms) = match player.command_go_ui.get() {
+                            let (mut go_amount, mut seek_ms) = match self.command_go_ui.get() {
                                 CommandGo::GoMs(v) => (v, true),
                                 _ => (5000, false),
                             };
                             if ui.checkbox(&mut seek_ms, "go ms: ").changed() {
                                 if seek_ms {
-                                    player.command_go_ui.set(CommandGo::GoMs(go_amount));
+                                    self.command_go_ui.set(CommandGo::GoMs(go_amount));
                                 } else {
-                                    player.command_go_ui.set(CommandGo::None);
+                                    self.command_go_ui.set(CommandGo::None);
                                 }
                             }
                             if seek_ms {
@@ -394,7 +392,7 @@ impl eframe::App for AppUi {
                                 if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
                                     if let Ok(v) = str_amount.parse() {
                                         go_amount = v;
-                                        player.command_go_ui.set(CommandGo::GoMs(go_amount));
+                                        self.command_go_ui.set(CommandGo::GoMs(go_amount));
                                     }
                                 }
                             }
@@ -402,7 +400,7 @@ impl eframe::App for AppUi {
 
                         ui.horizontal(|ui| {
                             if ui.button("Go").clicked() {
-                                player.go_ahead_ui();
+                                player.go_ahead_ui(&self.command_go_ui);
                             }
                         });
                     }
@@ -436,9 +434,8 @@ impl eframe::App for AppUi {
                 }
                 if self.player.is_some() {
                     self.handle_key_player(ui, ctx);
-                } else {
-                    self.handle_key_no_player(ui, ctx);
                 }
+                let none = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
 
                 let rect = {
                     const WIDTH: f32 = 30.0;
@@ -448,18 +445,14 @@ impl eframe::App for AppUi {
                     };
                     egui::Rect::from_center_size(right_center, egui::Vec2::splat(WIDTH))
                 };
-
                 let button = ui.put(rect, egui::Button::new(self.collapse_str()).small());
                 if button.clicked() {
                     self.collapse = !self.collapse;
                 }
-                // dont use the following code, the t.response.rect.height() == ui.max_rect().height()
-                // let t = ui.with_layout(egui::Layout::right_to_left(egui::Align::Center),|ui|{
-                //     if ui.button(app_ui.collapse_str()).clicked(){
-                //         app_ui.collapse = !app_ui.collapse;
-                //     }
-                // });
-                // log::info!("w:{}, h:{}  all: w: {}, h: {}", t.response.rect.width(),t.response.rect.height(), ui.max_rect().width(),ui.max_rect().height());
+
+                if !button.hovered() && self.player.is_none() && none.hovered() {
+                    self.handle_key_no_player(ui, ctx);
+                }
             });
     }
 }

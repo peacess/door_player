@@ -1,7 +1,22 @@
 # player
-   This player is cross-platform and not perfect, but it is a good project for learning rust egui ffmpeg  
+   
+    Door player is cross-platform and simple, it is a good project for learning rust egui ffmpeg  
 
-dependencies: egui, ffmpeg    
+Features:  
+1. Play mp4/mkv video file  
+2. Embedded subtitle  
+3. Fast forward by the Packet(not support rewind)  
+4. Fast forward by the Frame(not support rewind)  
+5. Next/Pre file  
+6. Keyboard  
+   * Space/Click-left -> toggle play or pause  
+   * Esc -> Close  
+   * Double Click -> toggle Full Screen  
+   * → Arrow Left  -> Fast forward packets/frames/milliseconds  
+   * ← Arrow Right -> Fast rewind milliseconds  
+   * ↑ Arrow Up  -> Volume up (planning)  
+   * ↓ Arrow Down -> Volume down (planning)  
+7. Other
 
 # build
 [ffmpeg](https://github.com/zmwangx/rust-ffmpeg/wiki/Notes-on-building)  
@@ -13,11 +28,9 @@ sudo apt install libass-dev libsdl2-dev libavdevice-dev
 # see ffmpeg 
 clone the ffmpeg
 cd ffmpeg
-// --enable-pic : fix the "[swscaler @ 0x7f8da4019600] No accelerated colorspace conversion found from yuv420p to rgb24"
 // --enable-libass --enable-avfilter : add filter subtitles
-
 ./configure --enable-gpl --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*
-make -j16 && sudo make install
+make -j16 && sudo make install && sudo make uninstall
 
 # see
 [egui-video(player)](https://github.com/n00kii/egui-video)   First version of door player is base on this project   
