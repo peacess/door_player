@@ -18,9 +18,9 @@ eframe = { version = "0.23.0"}
 
 rfd = "0.12.0"
 ffmpeg = {package = "ffmpeg-next", version = "6.0.0"}
-#ffmpeg = {version = "0.6.0", git = "https://github.com/meh/rust-ffmpeg", features = [
-#    "codec","format"
-#]}
+#ffmpeg = {version = "0.6.0", git = "https://github.com/meh/rust-ffmpeg"}
+#ffmpeg = {package = "ffmpeg-the-third",version = "1.2.2+ffmpeg-6.0"}
+
 cpal = "0.15.2"
 spin_sleep = "1.1.1"
 

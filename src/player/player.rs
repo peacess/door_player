@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use egui::{Align2, Color32, FontId, Image, Rect, Response, Rounding, Sense, Spinner, Ui, vec2, Vec2};
 use egui::epaint::Shadow;
 use egui::load::SizedTexture;
-use ffmpeg::{Rational, Rescale, rescale};
+use ffmpeg::{Rescale, rescale};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
@@ -75,6 +75,7 @@ impl Player {
         let (video_index, video_decoder) = {
             let video_stream = format_input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
             let video_index = video_stream.index();
+            log::info!("video_stream time base: {}", video_stream.time_base());
             let video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
             let mut video_decoder = video_context.decoder().video()?;
             let mut thread_conf = video_decoder.threading();
@@ -97,39 +98,40 @@ impl Player {
         };
 
         // 字幕
-        let (subtitle_index, subtitle_decoder) = {
-            let subtitle_stream = format_input.streams().best(ffmpeg::media::Type::Subtitle).ok_or(ffmpeg::Error::InvalidData)?;
-            let subtitle_index = subtitle_stream.index();
-            let context = ffmpeg::codec::context::Context::from_parameters(subtitle_stream.parameters())?;
-            let subtitle_decoder = context.decoder().subtitle()?;
-            (subtitle_index, subtitle_decoder)
+        let graph = {
+            let video_time_base = format_input.stream(video_index).expect("").time_base();
+            if format_input.streams().best(ffmpeg::media::Type::Subtitle).is_some() {
+                match Self::graph(&video_decoder, file, video_time_base) {
+                    Err(e) => {
+                        log::error!("{}", e);
+                        None
+                    }
+                    Ok(t) => Some(t)
+                }
+            } else {
+                None
+            }
         };
 
         let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(AUDIO_PACKET_QUEUE_SIZE);
         let (video_packet_sender, video_packet_receiver) = kanal::bounded(VIDEO_PACKET_QUEUE_SIZE);
-        let (subtitle_packet_sender, subtitle_packet_receiver) = kanal::bounded(VIDEO_PACKET_QUEUE_SIZE);
 
         let (audio_frame_sender, audio_frame_receiver) = kanal::bounded(AUDIO_FRAME_QUEUE_SIZE);
         let (video_frame_sender, video_frame_receiver) = kanal::bounded(VIDEO_FRAME_QUEUE_SIZE);
-        let (subtitle_frame_sender, subtitle_frame_receiver) = kanal::bounded(VIDEO_FRAME_QUEUE_SIZE);
-
-        let video_time_base = format_input.stream(video_index).expect("").time_base();
-        // .ok_or_else(|| PlayerError::Error(format!("根据 stream_idx 无法获取到 stream")))?
-        // .time_base;
 
         //开启 音频解码线程
         player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_sender);
         //开启 音频播放线程
         player.audio_play_run(audio_frame_receiver);
         //开启 视频解码线程
-        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_sender, video_time_base, subtitle_frame_receiver);
+        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_sender, graph);
         //开启 视频播放
         player.video_play_run(ctx.clone(), video_frame_receiver);
-        player.subtitle_decode_run(subtitle_decoder, subtitle_packet_receiver, subtitle_frame_sender);
+        // player.subtitle_decode_run(subtitle_decoder, subtitle_packet_receiver, subtitle_frame_sender);
 
         //开启 读frame线程
         player.read_packet_run(format_input, audio_packet_sender, audio_index,
-                               video_packet_sender, video_index, subtitle_packet_sender, subtitle_index);
+                               video_packet_sender, video_index);
 
         // player.play_ctrl.set_pause(false);
         Ok(player)
@@ -174,18 +176,25 @@ impl Player {
         Ok(egui::ColorImage { size, pixels })
     }
 
-    fn graph(dec_ctx: &ffmpeg::decoder::Video) -> Result<ffmpeg::filter::Graph, ffmpeg::Error> {
+    //, time_base_video: ffmpeg::Rational
+    fn graph(dec_ctx: &ffmpeg::decoder::Video, sub_title_file: &str, time_base: ffmpeg::Rational) -> Result<ffmpeg::filter::Graph, ffmpeg::Error> {
         let mut graph = ffmpeg::filter::Graph::new();
         let src = ffmpeg::filter::find("buffer").ok_or(ffmpeg::Error::OptionNotFound)?;
         let sink = ffmpeg::filter::find("buffersink").ok_or(ffmpeg::Error::OptionNotFound)?;
         let args = format!("video_size={}x{}:pix_fmt={}:time_base={}/{}:pixel_aspect={}/{}",
                            dec_ctx.width(), dec_ctx.height(), ffmpeg::ffi::AVPixelFormat::from(dec_ctx.format()) as i32,
-                           dec_ctx.time_base().numerator(), dec_ctx.time_base().denominator(),
+                           time_base.numerator(), time_base.denominator(),
                            dec_ctx.aspect_ratio().numerator(),
                            dec_ctx.aspect_ratio().denominator());
-
+        log::info!("{}",args);
         let _ = graph.add(&src, "in", &args)?;
-        let  _= graph.add(&sink, "out", "")?;
+        let _ = graph.add(&sink, "out", "")?;
+        let mut parse = graph.input("out", 0)?;
+        parse = parse.output("in", 0)?;
+        // let file = ""
+        // let spec = format!("subtitles=filename='{}':original_size={}x{}","/home/peace/gopath/src/peacess/door_player/13.mkv",dec_ctx.width(),dec_ctx.height());
+        let spec = format!("subtitles=filename='{}'", sub_title_file);
+        parse.parse(&spec)?;
         graph.validate()?;
         Ok(graph)
     }
@@ -357,25 +366,12 @@ impl Player {
         });
     }
 
-    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, video_deque: Sender<VideoFrame>, _: Rational, subtitle_frame_receiver: Receiver<SubtitleFrame>) {
+    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, video_deque: Sender<VideoFrame>, mut graph: Option<ffmpeg::filter::Graph>) {
         let play_ctrl = self.play_ctrl.clone();
         let width = video_decoder.width() as usize;
         let height = video_decoder.height() as usize;
 
         let _ = std::thread::Builder::new().name("video decode".to_string()).spawn(move || 'RUN: loop {
-            let mut graph = {
-                match Self::graph(&video_decoder) {
-                    Err(e) => {
-                        log::error!("{}", e);
-                        return;
-                    }
-                    Ok(t) => t,
-                }
-            };
-
-            // let mut filter_out = graph.get("out").expect("");
-            // let mut filter_in = graph.get("in").expect("");
-
             if PlayerState::Stopped == play_ctrl.player_state.get() {
                 log::info!("video decode exit");
                 break;
@@ -387,21 +383,28 @@ impl Player {
                 }
                 Ok(_) => {
                     let mut err_count = 0;
-                    let frame = loop {
-                        let mut filter_frame = ffmpeg::frame::Video::empty();
-                        if let Err(e) = graph.get("in").expect("").source().add(&v_frame) {
-                            log::error!("{}", e);
-                            continue 'RUN;
-                        }
+                    let frame = {
+                        match graph {
+                            None => v_frame,
+                            Some(ref mut graph) => {
+                                loop {
+                                    let mut filter_frame = ffmpeg::frame::Video::empty();
+                                    if let Err(e) = graph.get("in").expect("").source().add(&v_frame) {
+                                        log::error!("{}", e);
+                                        continue 'RUN;
+                                    }
 
-                        if let Err(e) = graph.get("out").expect("").sink().frame(&mut filter_frame) {
-                            log::error!("{}", e);
-                            err_count += 1;
-                        }else {
-                            break filter_frame;
-                        }
-                        if err_count > 3 {
-                            continue 'RUN;
+                                    if let Err(e) = graph.get("out").expect("").sink().frame(&mut filter_frame) {
+                                        log::error!("{}", e);
+                                        err_count += 1;
+                                    } else {
+                                        break filter_frame;
+                                    }
+                                    if err_count > 3 {
+                                        continue 'RUN;
+                                    }
+                                }
+                            }
                         }
                     };
                     let color_image = match Self::frame_to_color_image(&frame) {
@@ -511,6 +514,8 @@ impl Player {
 
     ///  [ass to image](https://www.cnblogs.com/tocy/p/subtitle-format-libass-tutorial.html)
     /// [merge frame] https://github.com/nldzsz/ffmpeg-demo
+    /// the fn do not use, replace to subtitle filter
+    #[allow(dead_code)]
     fn subtitle_decode_run(&self, mut subtitle_decoder: ffmpeg::decoder::Subtitle, packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, subtitle_deque: Sender<SubtitleFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let _ = std::thread::Builder::new().name("subtitle decode".to_string()).spawn(move || loop {
@@ -538,33 +543,31 @@ impl Player {
                                     duration: packet.duration(),
                                     ..Default::default()
                                 };
-                                let sub_text = {
-                                    let mut sub_text = String::default();
-                                    for rect in sub.rects() {
-                                        let line = match rect {
-                                            ffmpeg::subtitle::Rect::None(_) => String::default(),
-                                            ffmpeg::subtitle::Rect::Bitmap(bitmap) => {
-                                                subtitle_frame.width = bitmap.width();
-                                                subtitle_frame.height = bitmap.height();
-                                                //todo
-                                                String::default()
-                                            }
-                                            ffmpeg::subtitle::Rect::Text(text) => {
-                                                text.get().to_string()
-                                            }
-                                            ffmpeg::subtitle::Rect::Ass(ass) => {
-                                                ass.get().to_string()
-                                            }
-                                        };
-                                        if sub_text.is_empty() {
-                                            sub_text = line;
-                                        } else {
-                                            sub_text.push_str("\n");
-                                            sub_text.push_str(&line);
+                                let mut sub_text = String::default();
+                                for rect in sub.rects() {
+                                    let line = match rect {
+                                        ffmpeg::subtitle::Rect::None(_) => String::default(),
+                                        ffmpeg::subtitle::Rect::Bitmap(bitmap) => {
+                                            subtitle_frame.width = bitmap.width();
+                                            subtitle_frame.height = bitmap.height();
+                                            //todo
+                                            String::default()
                                         }
+                                        ffmpeg::subtitle::Rect::Text(text) => {
+                                            text.get().to_string()
+                                        }
+                                        ffmpeg::subtitle::Rect::Ass(ass) => {
+                                            ass.get().to_string()
+                                        }
+                                    };
+                                    if sub_text.is_empty() {
+                                        sub_text = line;
+                                    } else {
+                                        sub_text.push_str("\n");
+                                        sub_text.push_str(&line);
                                     }
-                                    sub_text
-                                };
+                                }
+                                subtitle_frame.pure_text = sub_text;
 
                                 match subtitle_deque.send(subtitle_frame) {
                                     Err(e) => {
@@ -581,7 +584,7 @@ impl Player {
     }
 
     fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize,
-                       video_deque: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize, subtitle_deque: Sender<Option<ffmpeg::Packet>>, subtitle_index: usize) {
+                       video_deque: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize) {
         let play_ctrl = self.play_ctrl.clone();
         let duration = input.duration();
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
@@ -669,11 +672,12 @@ impl Player {
                                 if let Err(e) = video_deque.send(Some(packet)) {
                                     log::error!("{}", e);
                                 }
-                            } else if packet.stream() == subtitle_index {
-                                if let Err(e) = subtitle_deque.send(Some(packet)) {
-                                    log::error!("{}", e);
-                                }
                             }
+                            // } else if packet.stream() == subtitle_index {
+                            //     if let Err(e) = subtitle_deque.send(Some(packet)) {
+                            //         log::error!("{}", e);
+                            //     }
+                            // }
                         }
                     } else {
                         play_ctrl.set_packet_finished(true);

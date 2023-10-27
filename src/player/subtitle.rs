@@ -5,7 +5,8 @@ pub struct SubtitleFrame {
     pub pts: f64,
     pub duration: i64,
     pub pure_text: String,
-    pub ass: String, //当数据类型为ass时，的原始数据
+    pub ass: String,
+    //当数据类型为ass时，的原始数据
     pub width: u32,
     pub height: u32,
 }

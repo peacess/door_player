@@ -7,6 +7,18 @@ dependencies: egui, ffmpeg
 [ffmpeg](https://github.com/zmwangx/rust-ffmpeg/wiki/Notes-on-building)  
 [sdl2](https://github.com/Rust-SDL2/rust-sdl2)  
 
+## Ubuntu
+sudo apt install libass-dev libsdl2-dev libavdevice-dev
+
+# see ffmpeg 
+clone the ffmpeg
+cd ffmpeg
+// --enable-pic : fix the "[swscaler @ 0x7f8da4019600] No accelerated colorspace conversion found from yuv420p to rgb24"
+// --enable-libass --enable-avfilter : add filter subtitles
+
+./configure --enable-gpl --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*
+make -j16 && sudo make install
+
 # see
 [egui-video(player)](https://github.com/n00kii/egui-video)   First version of door player is base on this project   
 [small-player](https://github.com/imxood/small-player)   
