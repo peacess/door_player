@@ -297,12 +297,12 @@ impl Player {
                     }
                 }
 
-                match packet_receiver.recv() {
+                match packet_receiver.try_recv() {
                     Err(e) => {
                         log::error!("{}", e);
                         break 'RUN;
                     }
-                    Ok(Some(packet)) => {
+                    Ok(Some(Some(packet))) => {
                         if PlayerState::Stopped == play_ctrl.player_state.get() {
                             log::info!("audio decode exit");
                             break 'RUN;
@@ -314,7 +314,7 @@ impl Player {
                             Ok(_) => {}
                         }
                     }
-                    Ok(None) => {
+                    Ok(None) | Ok(Some(None)) => {
                         // match audio_decoder.send_eof() {
                         //     Err(e) => {
                         //         log::error!("{}", e);
@@ -377,78 +377,77 @@ impl Player {
                 break;
             }
             let mut v_frame = ffmpeg::frame::Video::empty();
-            match video_decoder.receive_frame(&mut v_frame) {
-                Err(e) => {
-                    log::debug!("{}", e);
-                }
-                Ok(_) => {
-                    let mut err_count = 0;
-                    let frame = {
-                        match graph {
-                            None => v_frame,
-                            Some(ref mut graph) => {
-                                loop {
-                                    let mut filter_frame = ffmpeg::frame::Video::empty();
-                                    if let Err(e) = graph.get("in").expect("").source().add(&v_frame) {
-                                        log::error!("{}", e);
-                                        continue 'RUN;
-                                    }
+            if let Err(e) = video_decoder.receive_frame(&mut v_frame){
+                log::debug!("{}", e);
+            }else {
+                let mut err_count = 0;
+                let frame = {
+                    match graph {
+                        None => v_frame,
+                        Some(ref mut graph) => {
+                            loop {
+                                let mut filter_frame = ffmpeg::frame::Video::empty();
+                                if let Err(e) = graph.get("in").expect("").source().add(&v_frame) {
+                                    log::error!("{}", e);
+                                    continue 'RUN;
+                                }
 
-                                    if let Err(e) = graph.get("out").expect("").sink().frame(&mut filter_frame) {
-                                        log::error!("{}", e);
-                                        err_count += 1;
-                                    } else {
-                                        break filter_frame;
-                                    }
-                                    if err_count > 3 {
-                                        continue 'RUN;
-                                    }
+                                if let Err(e) = graph.get("out").expect("").sink().frame(&mut filter_frame) {
+                                    log::error!("{}", e);
+                                    err_count += 1;
+                                } else {
+                                    break filter_frame;
+                                }
+                                if err_count > 3 {
+                                    continue 'RUN;
                                 }
                             }
                         }
-                    };
-                    let color_image = match Self::frame_to_color_image(&frame) {
-                        Err(e) => {
-                            log::error!("{}", e);
-                            continue;
-                        }
-                        Ok(t) => t,
-                    };
-                    let pts = frame.pts().unwrap_or_default() as f64;
-
-                    let duration = {
-                        match video_decoder.frame_rate() {
-                            None => {
-                                log::error!("the frame_rate is null");
-                                return;
-                            }
-                            Some(t) => {
-                                1.0 / f64::from(t)
-                            }
-                        }
-                    };
-
-                    let video_frame = VideoFrame {
-                        width,
-                        height,
-                        pts,
-                        duration,
-                        color_image,
-                    };
-                    match video_deque.send(video_frame) {
-                        Err(e) => {
-                            log::error!("{}", e);
-                        }
-                        Ok(_) => {}
                     }
-                    spin_sleep::sleep(std::time::Duration::from_millis(2));
+                };
+                let color_image = match Self::frame_to_color_image(&frame) {
+                    Err(e) => {
+                        log::error!("{}", e);
+                        continue;
+                    }
+                    Ok(t) => t,
+                };
+                let pts = frame.pts().unwrap_or_default() as f64;
+
+                let duration = {
+                    match video_decoder.frame_rate() {
+                        None => {
+                            log::error!("the frame_rate is null");
+                            return;
+                        }
+                        Some(t) => {
+                            1.0 / f64::from(t)
+                        }
+                    }
+                };
+
+                let video_frame = VideoFrame {
+                    width,
+                    height,
+                    pts,
+                    duration,
+                    color_image,
+                };
+                match video_deque.send(video_frame) {
+                    Err(e) => {
+                        log::error!("{}", e);
+                    }
+                    Ok(_) => {}
                 }
+                spin_sleep::sleep(std::time::Duration::from_millis(2));
             }
-            match packet_receiver.recv() {
+
+            match packet_receiver.try_recv() {
                 Err(e) => {
                     log::error!("{}", e);
+                    spin_sleep::sleep(PLAY_MIN_INTERVAL);
                 }
-                Ok(Some(packet)) => {
+                Ok(Some(Some(packet))) => {
                     match video_decoder.send_packet(&packet) {
                         Err(e) => {
                             log::error!("{}", e);
@@ -457,7 +456,7 @@ impl Player {
                     }
                     spin_sleep::sleep(std::time::Duration::from_millis(2));
                 }
-                Ok(None) => {}
+                Ok(None) | Ok(Some(None)) => {}
             }
         });
     }
