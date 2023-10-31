@@ -11,7 +11,7 @@ Features:
 6. Keyboard  
    * Space/Click-left -> toggle play or pause  
    * Esc -> Close  
-   * Double Click -> toggle Full Screen  
+   * Double Click/F1 -> toggle Full Screen  
    * → Arrow Left  -> Fast forward packets/frames/milliseconds  
    * ← Arrow Right -> Fast rewind milliseconds  
    * ↑ Arrow Up  -> Volume up (planning)  

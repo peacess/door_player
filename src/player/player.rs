@@ -76,13 +76,16 @@ impl Player {
             let video_stream = format_input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
             let video_index = video_stream.index();
             log::info!("video_stream time base: {}", video_stream.time_base());
-            let video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
-            let mut video_decoder = video_context.decoder().video()?;
-            let mut thread_conf = video_decoder.threading();
-            log::info!("video: {:?}", &thread_conf);
-            thread_conf.count = 3;
-            thread_conf.kind = ffmpeg::threading::Type::Frame;
-            video_decoder.set_threading(thread_conf);
+            let mut video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
+            {
+                let mut thread_conf = video_context.threading();
+                log::info!("video threads : {:?}", &thread_conf);
+                thread_conf.count = 2;
+                thread_conf.kind = ffmpeg::threading::Type::Slice;
+                video_context.set_threading(thread_conf);
+            }
+
+            let video_decoder = video_context.decoder().video()?;
             player.width = video_decoder.width();
             player.height = video_decoder.height();
             (video_index, video_decoder)
@@ -92,7 +95,14 @@ impl Player {
         let (audio_index, audio_decoder) = {
             let audio_stream = format_input.streams().best(ffmpeg::media::Type::Audio).ok_or(ffmpeg::Error::InvalidData)?;
             let audio_index = audio_stream.index();
-            let audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
+            let mut audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
+            {
+                let mut thread_conf = audio_context.threading();
+                log::info!("audio threads : {:?}", &thread_conf);
+                thread_conf.count = 2;
+                thread_conf.kind = ffmpeg::threading::Type::Slice;
+                audio_context.set_threading(thread_conf);
+            }
             let audio_decoder = audio_context.decoder().audio()?;
             (audio_index, audio_decoder)
         };

@@ -62,6 +62,9 @@ impl AppUi {
                                         _ => {}
                                     }
                                 }
+                                Key::F1 => {
+                                    self.command_ui.set(CommandUi::FullscreenToggle);
+                                }
                                 _ => {}
                             }
                         }
@@ -185,8 +188,17 @@ impl AppUi {
 
             match cmd {
                 CommandUi::None => {}
-                CommandUi::FullscreenToggle => _frame.set_fullscreen(!_frame.info().window_info.fullscreen),
-                CommandUi::FullscreenTrue => _frame.set_fullscreen(true),
+                CommandUi::FullscreenToggle => {
+                    let b = _frame.info().window_info.fullscreen;
+                    _frame.set_fullscreen(!b);
+                    if !b {
+                        self.collapse = true;
+                    }
+                },
+                CommandUi::FullscreenTrue => {
+                    _frame.set_fullscreen(true);
+                    self.collapse = true;
+                },
                 CommandUi::FullscreenFalse => _frame.set_fullscreen(true),
                 CommandUi::MaximizedToggle => _frame.set_maximized(!_frame.info().window_info.maximized),
                 CommandUi::MaximizedTrue => _frame.set_maximized(true),
