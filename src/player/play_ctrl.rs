@@ -1,7 +1,7 @@
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::{Duration};
 
 use bytemuck::NoUninit;
 use eframe::epaint::TextureHandle;
@@ -11,7 +11,7 @@ use ringbuf::SharedRb;
 use crate::kits::Shared;
 use crate::player::{AV_TIME_BASE_RATIONAL, CommandGo, RingBufferProducer, timestamp_to_millisecond};
 use crate::player::audio::{AudioDevice, AudioFrame};
-use crate::player::consts::{VIDEO_SYNC_THRESHOLD_MAX, VIDEO_SYNC_THRESHOLD_MIN};
+use crate::player::consts::VIDEO_SYNC_THRESHOLD_MAX;
 use crate::player::video::VideoFrame;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
@@ -32,59 +32,51 @@ pub enum PlayerState {
 
 unsafe impl NoUninit for PlayerState {}
 
+#[derive(Debug, Default)]
 pub struct Clock {
-    /// Clock的起始时间
-    start: Instant,
-    /// 当前帧的显示时间
-    pts: f64,
-    /// 当前帧的持续时间
-    duration: f64,
-    /// 当前帧的更新时间
-    last_update: Duration,
+    pts: i64,
+    frame_duration: i64,
+    ///
+    q2d: f64,
+    /// 播放时刻
+    play_ts: f64,
+    /// frame的播放时长
+    play_duration: f64,
 }
 
 impl Clock {
-    fn new(start: Instant) -> Self {
-        let last_update = start.elapsed();
+    fn new(q2d: f64) -> Self {
         Self {
-            start,
-            pts: 0.0,
-            duration: 0.0,
-            last_update,
+            q2d,
+            ..Default::default()
         }
     }
 
-    pub fn current(&self) -> f64 {
-        self.pts + (self.start.elapsed() - self.last_update.into()).as_secs_f64()
+    pub fn play_ts(&self, frames: i64) -> f64 {
+        self.play_ts + frames as f64 * self.q2d
     }
 
-    pub fn update(&mut self, pts: f64, duration: f64) {
+    pub fn play_ts_duration(&self) -> (f64, f64) {
+        (self.play_ts, self.play_duration)
+    }
+
+    pub fn update(&mut self, pts: i64, frame_duration: i64) {
         self.pts = pts;
-        self.duration = duration;
-        self.last_update = self.start.elapsed().into();
-    }
-
-    pub fn duration(&self) -> f64 {
-        self.duration
+        self.frame_duration = frame_duration;
+        self.play_ts = pts as f64 * self.q2d;
+        self.play_duration = frame_duration as f64 * self.q2d;
     }
 }
 
 #[derive(Clone)]
 pub struct PlayCtrl {
     pub player_state: Shared<PlayerState>,
-    // /// 解码开始时间, 也是音视频的起始时间
-    // start: Instant,
-    /// 解封装(取包)完成
     packet_finished: Arc<AtomicBool>,
-    /// 视频播放线程完成
     video_finished: Arc<AtomicBool>,
-    /// 控制同步
     video_clock: Arc<Mutex<Clock>>,
     pub(crate) audio_dev: Arc<AudioDevice>,
     audio_finished: Arc<AtomicBool>,
-    /// 音量控制
     pub audio_volume: Shared<f32>,
-    /// 控制同步
     audio_clock: Arc<Mutex<Clock>>,
     /// The player's texture handle.
     pub texture_handle: egui::TextureHandle,
@@ -105,13 +97,13 @@ impl PlayCtrl {
         producer: ringbuf::Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
         audio_dev: Arc<AudioDevice>,
         texture_handle: TextureHandle,
+        video_q2d: f64, audio_q2d: f64,
     ) -> Self {
-        let start = Instant::now();
         let demux_finished = Arc::new(AtomicBool::new(false));
         let audio_finished = Arc::new(AtomicBool::new(false));
         let video_finished = Arc::new(AtomicBool::new(false));
-        let video_clock = Arc::new(Mutex::new(Clock::new(start.clone())));
-        let audio_clock = Arc::new(Mutex::new(Clock::new(start.clone())));
+        let video_clock = Arc::new(Mutex::new(Clock::new(video_q2d)));
+        let audio_clock = Arc::new(Mutex::new(Clock::new(audio_q2d)));
 
         Self {
             player_state: Shared::new(PlayerState::Paused),
@@ -160,79 +152,86 @@ impl PlayCtrl {
     pub fn set_packet_finished(&self, demux_finished: bool) {
         self.packet_finished.store(demux_finished, Ordering::Relaxed);
     }
-
-    /// 解封装播放线程是否完成
     pub fn packet_finished(&self) -> bool {
         self.packet_finished.load(Ordering::Relaxed)
     }
 
-    /// 获取声音设备的默认配置
     pub fn audio_config(&self) -> cpal::SupportedStreamConfig {
         self.audio_dev.stream_input_config()
     }
-
-    /// 播放音频帧
     pub fn play_audio(&mut self, mut frame: AudioFrame) -> Result<(), anyhow::Error> {
-        // 更新音频时钟
-        let _ = self.update_audio_clock(frame.pts, frame.duration);
         let mut producer = self.producer.lock();
         while producer.free_len() < frame.samples.len() {
             // log::info!("play audio: for : {}", producer.free_len());
-            spin_sleep::sleep(Duration::from_millis(10));
+            // spin_sleep::sleep(Duration::from_nanos(10));
+            std::thread::sleep(Duration::from_micros(1));
         }
         // log::info!("play audio out: {}", frame.samples.len());
+        let _ = self.update_audio_clock(frame.pts, frame.duration);
         if self.audio_dev.get_mute() {
-            for f in frame.samples.as_mut_slice() {
-                *f = 0.0;
+            frame.samples.as_mut_slice().fill(0.0);
+        }
+        let mut s = frame.samples.as_slice();
+        loop {
+            let done = producer.push_slice(s);
+            if done == s.len() {
+                break;
+            } else {
+                s = &s[done..];
+                std::thread::sleep(Duration::from_micros(1));
+                // spin_sleep::sleep(Duration::from_nanos(10));
             }
         }
-        producer.push_slice(frame.samples.as_slice());
+
+
         // spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())
     }
 
-    /// 播放视频帧
     pub fn play_video(&mut self, frame: VideoFrame, ctx: &egui::Context) -> Result<(), anyhow::Error> {
-        let _ = self.update_video_clock(frame.pts, frame.duration);
+        let delay = self.update_video_clock(frame.pts, frame.duration);
         self.texture_handle.set(frame.color_image, egui::TextureOptions::LINEAR);
         ctx.request_repaint();
-        // spin_sleep::sleep(Duration::from_secs_f64(delay));
+        if delay > 0.0 {
+            log::debug!("video delay: {}", delay);
+            spin_sleep::sleep(Duration::from_secs_f64(delay));
+        }
         Ok(())
-    }
-
-    pub fn current_audio_clock(&self) -> f64 {
-        self.audio_clock.lock().current()
     }
 
     #[inline]
-    fn update_audio_clock(&self, pts: f64, duration: f64) -> f64 {
+    fn update_audio_clock(&self, pts: i64, duration: i64) {
         let mut clock = self.audio_clock.lock();
         clock.update(pts, duration);
-        duration
     }
 
-    fn update_video_clock(&self, pts: f64, duration: f64) -> f64 {
+    #[inline]
+    fn update_video_clock(&self, pts: i64, duration: i64) -> f64 {
         self.video_clock.lock().update(pts, duration);
         self.compute_video_delay()
     }
 
     fn compute_video_delay(&self) -> f64 {
-        let audio_clock = self.audio_clock.lock().current();
-        let video_clock = self.video_clock.lock().current();
-        let duration = self.video_clock.lock().duration();
+        let cache_frame = self.producer.lock().len() as i64 / 2000 + 2;
+        let audio_clock = self.audio_clock.lock().play_ts(cache_frame);
+        let (video_clock, duration) = self.video_clock.lock().play_ts_duration();
         let diff = video_clock - audio_clock;
         // 视频时钟落后于音频时钟, 超过了最小阈值
-        if diff <= VIDEO_SYNC_THRESHOLD_MIN {
+        // if diff <= VIDEO_SYNC_THRESHOLD_MIN {
+        if diff <= 0.0 {
             // 在原来的duration基础上, 减少一定的休眠时间, 来达到追赶播放的目的 (最小休眠时间是0)
+            // 0.0
             0.0f64.max(duration + diff)
         }
         // 视频时钟超前于音频时钟, 且超过了最大阈值
         else if diff >= VIDEO_SYNC_THRESHOLD_MAX {
             // 放慢播放速度, 增加一定的休眠时间
             duration + VIDEO_SYNC_THRESHOLD_MAX
+            // diff
         }
         // 满足阈值范围, 则 正常的延迟时间
         else {
+            // 0.0
             duration
         }
     }

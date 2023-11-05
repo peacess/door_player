@@ -1,6 +1,6 @@
 [package]
 name = "door_player"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 authors = ["Andy <peacess@163.com>"]
 description = "Door Player, Cross by ffmpeg and egui"
@@ -36,7 +36,7 @@ chrono ="0.4"
 anyhow = "1.0"
 
 [profile.dev]
-#opt-level= 3
+opt-level= 3
 
 [features]
 default = []

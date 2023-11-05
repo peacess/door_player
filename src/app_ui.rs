@@ -194,11 +194,11 @@ impl AppUi {
                     if !b {
                         self.collapse = true;
                     }
-                },
+                }
                 CommandUi::FullscreenTrue => {
                     _frame.set_fullscreen(true);
                     self.collapse = true;
-                },
+                }
                 CommandUi::FullscreenFalse => _frame.set_fullscreen(true),
                 CommandUi::MaximizedToggle => _frame.set_maximized(!_frame.info().window_info.maximized),
                 CommandUi::MaximizedTrue => _frame.set_maximized(true),
@@ -218,15 +218,11 @@ impl AppUi {
     fn open_file(&mut self, ctx: &Context, buf: PathBuf) {
         self.media_path = buf.to_string_lossy().to_string();
         if !self.media_path.is_empty() {
-            let texture_handle = match &self.player {
-                Some(p) => p.texture_handle.clone(),
-                None => Player::default_texture_handle(ctx),
-            };
+            //这里需要创建新的，不然first frame可能会显示上个视频的内容
+            let texture_handle = Player::default_texture_handle(ctx);
             match Player::new(ctx, texture_handle, self.command_ui.clone(), &self.media_path) {
                 Ok(p) => {
-                    if let Some(mut p) = self.player.replace(p) {
-                        p.stop();
-                    }
+                    self.player = Some(p);
                 }
                 Err(e) => {
                     log::error!("{}", e);
@@ -295,7 +291,7 @@ impl AppUi {
         if unsafe { !LOAD } {
             let mut fonts = egui::FontDefinitions::default();
             let font_name = "OPPOSans".to_string();
-            fonts.font_data.insert(font_name.clone(),egui::FontData::from_static(include_bytes!("../assets/fonts/OPPOSans-B.ttf")));
+            fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(include_bytes!("../assets/fonts/OPPOSans-B.ttf")));
             fonts.families.get_mut(&egui::FontFamily::Proportional).expect("").insert(0, font_name.clone());
             fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
             ctx.set_fonts(fonts);

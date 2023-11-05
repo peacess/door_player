@@ -10,8 +10,8 @@ pub struct AudioFrame {
     pub samples: Vec<f32>,
     pub channels: u16,
     pub sample_rate: u32,
-    pub pts: f64,
-    pub duration: f64,
+    pub pts: i64,
+    pub duration: i64,
 }
 
 impl AudioFrame {
@@ -19,8 +19,8 @@ impl AudioFrame {
         samples: Vec<f32>,
         channels: u16,
         sample_rate: u32,
-        pts: f64,
-        duration: f64,
+        pts: i64,
+        duration: i64,
     ) -> Self {
         Self {
             samples,

@@ -4,8 +4,8 @@ use std::fmt::{Debug, Formatter};
 pub struct VideoFrame {
     pub width: usize,
     pub height: usize,
-    pub pts: f64,
-    pub duration: f64,
+    pub pts: i64,
+    pub duration: i64,
     pub color_image: egui::ColorImage,
 }
 
@@ -25,8 +25,8 @@ impl VideoFrame {
         color_image: egui::ColorImage,
         width: usize,
         height: usize,
-        pts: f64,
-        duration: f64,
+        pts: i64,
+        duration: i64,
     ) -> Self {
         Self {
             color_image,
