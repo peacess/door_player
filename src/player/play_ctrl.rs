@@ -1,7 +1,7 @@
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration};
+use std::time::Duration;
 
 use bytemuck::NoUninit;
 use eframe::epaint::TextureHandle;
@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use ringbuf::SharedRb;
 
 use crate::kits::Shared;
-use crate::player::{AV_TIME_BASE_RATIONAL, CommandGo, RingBufferProducer, timestamp_to_millisecond};
+use crate::player::{AV_TIME_BASE_RATIONAL, CommandGo, RingBufferProducer, timestamp_to_millisecond, VIDEO_SYNC_THRESHOLD_MIN};
 use crate::player::audio::{AudioDevice, AudioFrame};
 use crate::player::consts::VIDEO_SYNC_THRESHOLD_MAX;
 use crate::player::video::VideoFrame;
@@ -216,11 +216,11 @@ impl PlayCtrl {
         let audio_clock = self.audio_clock.lock().play_ts(cache_frame);
         let (video_clock, duration) = self.video_clock.lock().play_ts_duration();
         let diff = video_clock - audio_clock;
-        // 视频时钟落后于音频时钟, 超过了最小阈值
-        // if diff <= VIDEO_SYNC_THRESHOLD_MIN {
-        if diff <= 0.0 {
+        if audio_clock == 0.0 || video_clock == 0.0 {
+            duration
+        } else if diff <= VIDEO_SYNC_THRESHOLD_MIN {
+            // 视频时钟落后于音频时钟, 超过了最小阈值
             // 在原来的duration基础上, 减少一定的休眠时间, 来达到追赶播放的目的 (最小休眠时间是0)
-            // 0.0
             0.0f64.max(duration + diff)
         }
         // 视频时钟超前于音频时钟, 且超过了最大阈值

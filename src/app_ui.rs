@@ -212,7 +212,7 @@ impl AppUi {
     }
 
     fn select_file() -> Option<PathBuf> {
-        rfd::FileDialog::new().add_filter("videos", &["mp4", "mkv"]).pick_file()
+        rfd::FileDialog::new().add_filter("videos", &["mp4", "mkv", "ogg", "webm", "wmv", "mov", "avi", "mp3", "flv"]).pick_file()
     }
 
     fn open_file(&mut self, ctx: &Context, buf: PathBuf) {

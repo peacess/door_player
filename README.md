@@ -26,11 +26,11 @@ Features:
 sudo apt install libass-dev libsdl2-dev libavdevice-dev
 
 # see ffmpeg 
-clone the ffmpeg
-cd ffmpeg
-// --enable-libass --enable-avfilter : add filter subtitles
-./configure --enable-gpl --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*
-make -j16 && sudo make install && sudo make uninstall
+clone the ffmpeg  
+cd ffmpeg  
+// --enable-libass --enable-avfilter : add filter subtitles  
+./configure --enable-gpl --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*  
+make -j16 && sudo make install && sudo make uninstall  
 
 # see
 [egui-video(player)](https://github.com/n00kii/egui-video)   First version of door player is base on this project   

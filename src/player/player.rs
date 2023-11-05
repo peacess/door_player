@@ -8,7 +8,6 @@ use chrono::{DateTime, Utc};
 use egui::{Align2, Color32, FontId, Image, Rect, Response, Rounding, Sense, Spinner, Ui, vec2, Vec2};
 use egui::epaint::Shadow;
 use egui::load::SizedTexture;
-use ffmpeg::{Rescale, rescale};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
@@ -40,74 +39,80 @@ pub struct Player {
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
     pub fn new(ctx: &egui::Context, mut texture_handle: egui::TextureHandle, command_ui: Shared<CommandUi>, file: &String) -> Result<Player, anyhow::Error> {
-        //打开文件
         {
             let mut format_input = ffmpeg::format::input(&path::Path::new(file))?;
-            let fist_frame = Self::first_frame(&mut format_input)?;
-            {
-                let beginning: i64 = 0;
-                let beginning_seek = beginning.rescale((1, 1), rescale::TIME_BASE);
-                if let Err(e) = format_input.seek(beginning_seek, ..beginning_seek) {
-                    log::error!("{}", e);
-                }
+            match Self::first_frame(&mut format_input) {
+                Ok(f) => texture_handle.set(Self::frame_to_color_image(&f)?, egui::TextureOptions::LINEAR),
+                Err(e) => log::error!("{}", e),
             }
             let _ = print_meda_info(&mut format_input);
-            texture_handle.set(Self::frame_to_color_image(&fist_frame)?, egui::TextureOptions::LINEAR);
         }
-        let max_audio_volume = 1.;
-
 
         let video_input = ffmpeg::format::input(&path::Path::new(file))?;
         // 获取视频解码器
         let (video_index, video_decoder, video_q2d) = {
-            let video_stream = video_input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
-            let video_index = video_stream.index();
-            log::info!("video_stream time base: {}", video_stream.time_base());
-            let mut video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
-            {
-                let mut thread_conf = video_context.threading();
-                log::info!("video threads : {:?}", &thread_conf);
-                thread_conf.count = 2;
-                thread_conf.kind = ffmpeg::threading::Type::Slice;
-                video_context.set_threading(thread_conf);
-            }
+            let video_stream = video_input.streams().best(ffmpeg::media::Type::Video);
+            match video_stream {
+                Some(video_stream) => {
+                    let video_index = video_stream.index();
+                    log::info!("video_stream time base: {}", video_stream.time_base());
+                    let mut video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
+                    {
+                        let mut thread_conf = video_context.threading();
+                        log::info!("video threads : {:?}", &thread_conf);
+                        thread_conf.count = 2;
+                        thread_conf.kind = ffmpeg::threading::Type::Slice;
+                        video_context.set_threading(thread_conf);
+                    }
 
-            let video_decoder = video_context.decoder().video()?;
-            (video_index, video_decoder, f64::from(video_stream.time_base()))
+                    let video_decoder = video_context.decoder().video()?;
+                    (video_index, Some(video_decoder), f64::from(video_stream.time_base()))
+                }
+                None => (0, None, 0.0)
+            }
         };
 
         // let video_input = ffmpeg::format::input(&path::Path::new(file))?;
         // 获取音频解码器
         let (audio_index, audio_decoder, audio_q2d) = {
-            let audio_stream = video_input.streams().best(ffmpeg::media::Type::Audio).ok_or(ffmpeg::Error::InvalidData)?;
-            let audio_index = audio_stream.index();
-            log::info!("audio_stream time base: {}", audio_stream.time_base());
-            let mut audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
-            {
-                let mut thread_conf = audio_context.threading();
-                log::info!("audio threads : {:?}", &thread_conf);
-                thread_conf.count = 1;
-                thread_conf.kind = ffmpeg::threading::Type::None;
-                audio_context.set_threading(thread_conf);
+            let audio_stream = video_input.streams().best(ffmpeg::media::Type::Audio);
+            if let Some(audio_stream) = audio_stream {
+                let audio_index = audio_stream.index();
+                log::info!("audio_stream time base: {}", audio_stream.time_base());
+                let mut audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
+                {
+                    let mut thread_conf = audio_context.threading();
+                    log::info!("audio threads : {:?}", &thread_conf);
+                    thread_conf.count = 1;
+                    thread_conf.kind = ffmpeg::threading::Type::None;
+                    audio_context.set_threading(thread_conf);
+                }
+                let audio_decoder = audio_context.decoder().audio()?;
+                (audio_index, Some(audio_decoder), f64::from(audio_stream.time_base()))
+            } else {
+                (0, None, 0.0)
             }
-            let audio_decoder = audio_context.decoder().audio()?;
-            (audio_index, audio_decoder, f64::from(audio_stream.time_base()))
         };
 
         // 字幕
         let graph = {
             // let mut subtitle_input = ffmpeg::format::input(&path::Path::new(file))?;
-            let video_time_base = video_input.stream(video_index).expect("").time_base();
-            if video_input.streams().best(ffmpeg::media::Type::Subtitle).is_some() {
-                match Self::graph(&video_decoder, file, video_time_base) {
-                    Err(e) => {
-                        log::error!("{}", e);
+            match &video_decoder {
+                None => None,
+                Some(video_decoder) => {
+                    let video_time_base = video_input.stream(video_index).expect("").time_base();
+                    if video_input.streams().best(ffmpeg::media::Type::Subtitle).is_some() {
+                        match Self::graph(&video_decoder, file, video_time_base) {
+                            Err(e) => {
+                                log::error!("{}", e);
+                                None
+                            }
+                            Ok(t) => Some(t)
+                        }
+                    } else {
                         None
                     }
-                    Ok(t) => Some(t)
                 }
-            } else {
-                None
             }
         };
 
@@ -118,41 +123,59 @@ impl Player {
             PlayCtrl::new(video_input.duration(), producer, audio_dev, texture_handle, video_q2d, audio_q2d)
         };
 
-        let player = Self {
+        let mut player = Self {
             play_ctrl,
-            width: video_decoder.width(),
-            height: video_decoder.height(),
-            max_audio_volume,
+            width: 0,
+            height: 0,
+            max_audio_volume: 1.0,
             last_seek_ms: None,
             mouth_move_ts: Utc::now().timestamp_millis(),
             command_ui,
         };
+        if let Some(video_decoder) = &video_decoder {
+            player.width = video_decoder.width();
+            player.height = video_decoder.height();
+        }
 
-        let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(AUDIO_PACKET_QUEUE_SIZE);
-        let (video_packet_sender, video_packet_receiver) = kanal::bounded(VIDEO_PACKET_QUEUE_SIZE);
+        let video_packet_sender = match video_decoder {
+            None => None,
+            Some(video_decoder) => {
+                let (video_packet_sender, video_packet_receiver) = kanal::bounded(VIDEO_PACKET_QUEUE_SIZE);
+                let (video_frame_sender, video_frame_receiver) = kanal::bounded(VIDEO_FRAME_QUEUE_SIZE);
+                //开启 视频解码线程
+                player.video_decode_run(video_decoder, video_packet_receiver, video_frame_sender, graph);
+                //开启 视频播放
+                player.video_play_run(ctx.clone(), video_frame_receiver);
+                // player.subtitle_decode_run(subtitle_decoder, subtitle_packet_receiver, subtitle_frame_sender);
+                Some(video_packet_sender)
+            }
+        };
 
-        let (audio_frame_sender, audio_frame_receiver) = kanal::bounded(AUDIO_FRAME_QUEUE_SIZE);
-        let (video_frame_sender, video_frame_receiver) = kanal::bounded(VIDEO_FRAME_QUEUE_SIZE);
+        let audio_packet_sender = match audio_decoder {
+            Some(audio_decoder) => {
+                let (audio_frame_sender, audio_frame_receiver) = kanal::bounded(AUDIO_FRAME_QUEUE_SIZE);
+                let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(AUDIO_PACKET_QUEUE_SIZE);
+                //开启 音频解码线程
+                player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_sender);
+                //开启 音频播放线程
+                player.audio_play_run(audio_frame_receiver);
+                Some(audio_packet_sender)
+            }
+            None => None
+        };
 
-        //开启 音频解码线程
-        player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_frame_sender);
-        //开启 音频播放线程
-        player.audio_play_run(audio_frame_receiver);
-        //开启 视频解码线程
-        player.video_decode_run(video_decoder, video_packet_receiver, video_frame_sender, graph);
-        //开启 视频播放
-        player.video_play_run(ctx.clone(), video_frame_receiver);
-        // player.subtitle_decode_run(subtitle_decoder, subtitle_packet_receiver, subtitle_frame_sender);
-
-        // //开启 读frame线程
-        player.read_packet_run(video_input, audio_packet_sender, audio_index,
-                               video_packet_sender, video_index);
+        if audio_packet_sender.is_some() || video_packet_sender.is_some() {
+            player.read_packet_run(video_input, audio_packet_sender, audio_index,
+                                   video_packet_sender, video_index);
+            Ok(player)
+        } else {
+            Err(anyhow::Error::new(ffmpeg::Error::StreamNotFound))
+        }
 
         // player.read_video_packet_run(video_input,   video_packet_sender, video_index);
         // player.read_audio_packet_run(audio_input, audio_packet_sender, audio_index);
 
         // player.play_ctrl.set_pause(false);
-        Ok(player)
     }
 
     pub fn default_texture_handle(ctx: &egui::Context) -> egui::TextureHandle {
@@ -365,7 +388,14 @@ impl Player {
                         }
                     }
                     Ok(None) => {
-                        empty_count = 0;
+                        if play_ctrl.packet_finished() {
+                            empty_count += 1;
+                            if empty_count == 10 {
+                                play_ctrl.set_audio_finished(true);
+                                log::info!("audio play exit");
+                                break;
+                            }
+                        }
                     }
                     Ok(Some(frame)) => {
                         match play_ctrl.play_audio(frame) {
@@ -500,7 +530,14 @@ impl Player {
                         }
                     }
                     Ok(None) => {
-                        empty_count = 0;
+                        if play_ctrl.packet_finished() {
+                            empty_count += 1;
+                            if empty_count == 10 {
+                                play_ctrl.set_video_finished(true);
+                                log::info!("video play exit");
+                                break;
+                            }
+                        }
                     }
                     Ok(Some(frame)) => {
                         if let Err(e) = play_ctrl.play_video(frame, &ctx) {
@@ -589,8 +626,8 @@ impl Player {
         });
     }
 
-    fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize,
-                       video_deque: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize) {
+    fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_deque: Option<kanal::Sender<Option<ffmpeg::Packet>>>, audio_index: usize,
+                       video_deque: Option<kanal::Sender<Option<ffmpeg::Packet>>>, video_index: usize) {
         let play_ctrl = self.play_ctrl.clone();
         let duration = input.duration();
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
@@ -600,7 +637,7 @@ impl Player {
                     break;
                 }
 
-                if play_ctrl.audio_finished() && play_ctrl.video_finished() {
+                if (audio_deque.is_none() || play_ctrl.audio_finished()) && (video_deque.is_none() || play_ctrl.video_finished()) {
                     play_ctrl.player_state.set(PlayerState::Stopped);
                     log::info!("read packet exit");
                     break;
@@ -628,8 +665,12 @@ impl Player {
                             log::error!("{}", e);
                         }
                         //清空之前的数据
-                        let _ = audio_deque.send(None);
-                        let _ = video_deque.send(None);
+                        if let Some(a) = &audio_deque {
+                            let _ = a.send(None);
+                        }
+                        if let Some(v) = &video_deque {
+                            let _ = v.send(None);
+                        }
                     }
                     CommandGo::Seek(t) => {
                         play_ctrl.command_go.set(CommandGo::None);
@@ -646,15 +687,22 @@ impl Player {
                             log::error!("{}", e);
                         }
                         //清空之前的数据
-                        let _ = audio_deque.send(None);
-                        let _ = video_deque.send(None);
+                        if let Some(a) = &audio_deque {
+                            let _ = a.send(None);
+                        }
+                        if let Some(v) = &video_deque {
+                            let _ = v.send(None);
+                        }
+
                         //不是每一packet的数据都会有界面输出，所以会出现seek后且是pause时，画面没有到位，所以多输出一packet
                         if let PlayerState::Paused = play_ctrl.player_state.get() {
                             packets = 2;
                         }
                     }
                     _ => {
-                        if play_ctrl.player_state.get() == PlayerState::Paused || audio_deque.is_full() || video_deque.is_full() {
+                        if play_ctrl.player_state.get() == PlayerState::Paused
+                            || (audio_deque.is_some() && audio_deque.as_ref().expect("").is_full())
+                            || (video_deque.is_some() && video_deque.as_ref().expect("").is_full()) {
                             spin_sleep::sleep(PLAY_MIN_INTERVAL);
                             continue 'PACKETS;
                         }
@@ -664,18 +712,18 @@ impl Player {
                 for _ in 0..packets {
                     if let Some((stream, packet)) = input.packets().next() {
                         if unsafe { !packet.is_empty() } {
-                            if packet.stream() == audio_index {
+                            if audio_deque.is_some() && packet.stream() == audio_index {
                                 if let Some(dts) = packet.dts() {
                                     play_ctrl.audio_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
                                 }
-                                if let Err(e) = audio_deque.send(Some(packet)) {
+                                if let Err(e) = audio_deque.as_ref().expect("").send(Some(packet)) {
                                     log::error!("{}", e);
                                 }
-                            } else if packet.stream() == video_index {
+                            } else if video_deque.is_some() && packet.stream() == video_index {
                                 if let Some(dts) = packet.dts() {
                                     play_ctrl.video_elapsed_ms.set(timestamp_to_millisecond(dts, stream.time_base()));
                                 }
-                                if let Err(e) = video_deque.send(Some(packet)) {
+                                if let Err(e) = video_deque.as_ref().expect("").send(Some(packet)) {
                                     log::error!("{}", e);
                                 }
                             }
