@@ -188,10 +188,6 @@ impl Player {
         } else {
             Err(anyhow::Error::new(ffmpeg::Error::StreamNotFound))
         }
-
-        // player.read_video_packet_run(video_input,   video_packet_sender, video_index);
-        // player.read_audio_packet_run(audio_input, audio_packet_sender, audio_index);
-
         // player.play_ctrl.set_pause(false);
     }
 
@@ -674,12 +670,21 @@ impl Player {
                     }
                     CommandGo::GoMs(ms) => {
                         play_ctrl.command_go.set(CommandGo::None);
-                        let diff = play_ctrl.elapsed_ms() + ms;
-                        let seek_pos = (diff * duration) / play_ctrl.duration_ms;
-                        if let Err(e) = input.seek(seek_pos, ..seek_pos) {
-                            log::error!("{}", e);
+                        let mut diff = play_ctrl.elapsed_ms() + ms;
+                        if diff < 0 {
+                            diff = 0;
                         }
-                        log::info!("go ms: {}, diff:{}, seek pos:{}", ms, diff, seek_pos);
+                        let seek_pos = (diff * duration) / play_ctrl.duration_ms;
+                        {
+                            let re = if ms > 0 {
+                                input.seek(seek_pos, seek_pos..)
+                            } else {
+                                input.seek(seek_pos, ..seek_pos)
+                            };
+                            if let Err(e) = re {
+                                log::error!("{}", e);
+                            }
+                        }
 
                         play_ctrl.clean_receiver();
                         if let Some(a) = &audio_packet_sender {
@@ -756,193 +761,6 @@ impl Player {
             }
         });
     }
-
-    fn read_video_packet_run(&self, mut input: ffmpeg::format::context::Input, video_packet_sender: kanal::Sender<Option<ffmpeg::Packet>>, video_index: usize) {
-        let play_ctrl = self.play_ctrl.clone();
-        let duration = input.duration();
-        let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
-            'PACKETS: loop {
-                if play_ctrl.player_state.get() == PlayerState::Stopped {
-                    log::info!("read packet exit");
-                    break;
-                }
-
-                if play_ctrl.audio_finished() && play_ctrl.video_finished() {
-                    play_ctrl.player_state.set(PlayerState::Stopped);
-                    log::info!("read packet exit");
-                    break;
-                }
-
-                let mut packets = 1;
-                match play_ctrl.command_go.get() {
-                    CommandGo::Packet(next_amount) => {
-                        play_ctrl.command_go.set(CommandGo::None);
-                        for _ in 1..next_amount {
-                            if let None = input.packets().next() {
-                                play_ctrl.set_packet_finished(true);
-                                spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                                continue 'PACKETS;
-                            }
-                        }
-                    }
-                    CommandGo::GoMs(ms) => {
-                        play_ctrl.command_go.set(CommandGo::None);
-                        let diff = play_ctrl.elapsed_ms() as i64 + ms;
-                        let scale = diff as f64 / play_ctrl.duration_ms as f64;
-
-                        let seek_pos = (scale * duration as f64) as i64;
-                        if let Err(e) = input.seek(seek_pos, ..seek_pos) {
-                            log::error!("{}", e);
-                        }
-                        //清空之前的数据
-                        let _ = video_packet_sender.send(None);
-                    }
-                    CommandGo::Seek(t) => {
-                        play_ctrl.command_go.set(CommandGo::None);
-                        let seek_pos = {
-                            if t > play_ctrl.duration {
-                                play_ctrl.duration
-                            } else if t < 1 {
-                                0
-                            } else {
-                                t
-                            }
-                        };
-                        if let Err(e) = input.seek(seek_pos, ..seek_pos) {
-                            log::error!("{}", e);
-                        }
-                        //清空之前的数据
-                        let _ = video_packet_sender.send(None);
-                        //不是每一packet的数据都会有界面输出，所以会出现seek后且是pause时，画面没有到位，所以多输出一packet
-                        if let PlayerState::Paused = play_ctrl.player_state.get() {
-                            packets = 2;
-                        }
-                    }
-                    _ => {
-                        if play_ctrl.player_state.get() == PlayerState::Paused || video_packet_sender.is_full() {
-                            spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                            continue 'PACKETS;
-                        }
-                    }
-                }
-
-                for _ in 0..packets {
-                    if let Some((_, packet)) = input.packets().next() {
-                        if unsafe { !packet.is_empty() } {
-                            if packet.stream() == video_index {
-                                if let Err(e) = video_packet_sender.send(Some(packet)) {
-                                    log::error!("{}", e);
-                                }
-                            }
-                            // } else if packet.stream() == subtitle_index {
-                            //     if let Err(e) = subtitle_deque.send(Some(packet)) {
-                            //         log::error!("{}", e);
-                            //     }
-                            // }
-                        }
-                    } else {
-                        play_ctrl.set_packet_finished(true);
-                        spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                        continue 'PACKETS;
-                    }
-                }
-            }
-        });
-    }
-
-    fn read_audio_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_packet_sender: kanal::Sender<Option<ffmpeg::Packet>>, audio_index: usize) {
-        let play_ctrl = self.play_ctrl.clone();
-        let duration = input.duration();
-        let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
-            'PACKETS: loop {
-                if play_ctrl.player_state.get() == PlayerState::Stopped {
-                    log::info!("read packet exit");
-                    break;
-                }
-
-                if play_ctrl.audio_finished() && play_ctrl.video_finished() {
-                    play_ctrl.player_state.set(PlayerState::Stopped);
-                    log::info!("read packet exit");
-                    break;
-                }
-
-                let mut packets = 1;
-                match play_ctrl.command_go.get() {
-                    CommandGo::Packet(next_amount) => {
-                        play_ctrl.command_go.set(CommandGo::None);
-                        for _ in 1..next_amount {
-                            if let None = input.packets().next() {
-                                play_ctrl.set_packet_finished(true);
-                                spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                                continue 'PACKETS;
-                            }
-                        }
-                    }
-                    CommandGo::GoMs(ms) => {
-                        play_ctrl.command_go.set(CommandGo::None);
-                        let diff = play_ctrl.elapsed_ms() as i64 + ms;
-                        let scale = diff as f64 / play_ctrl.duration_ms as f64;
-
-                        let seek_pos = (scale * duration as f64) as i64;
-                        if let Err(e) = input.seek(seek_pos, ..seek_pos) {
-                            log::error!("{}", e);
-                        }
-                        //清空之前的数据
-                        let _ = audio_packet_sender.send(None);
-                    }
-                    CommandGo::Seek(t) => {
-                        play_ctrl.command_go.set(CommandGo::None);
-                        let seek_pos = {
-                            if t > play_ctrl.duration {
-                                play_ctrl.duration
-                            } else if t < 1 {
-                                0
-                            } else {
-                                t
-                            }
-                        };
-                        if let Err(e) = input.seek(seek_pos, ..seek_pos) {
-                            log::error!("{}", e);
-                        }
-                        //清空之前的数据
-                        let _ = audio_packet_sender.send(None);
-                        //不是每一packet的数据都会有界面输出，所以会出现seek后且是pause时，画面没有到位，所以多输出一packet
-                        if let PlayerState::Paused = play_ctrl.player_state.get() {
-                            packets = 2;
-                        }
-                    }
-                    _ => {
-                        if play_ctrl.player_state.get() == PlayerState::Paused || audio_packet_sender.is_full() {
-                            spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                            continue 'PACKETS;
-                        }
-                    }
-                }
-
-                for _ in 0..packets {
-                    if let Some((_, packet)) = input.packets().next() {
-                        if unsafe { !packet.is_empty() } {
-                            if packet.stream() == audio_index {
-                                if let Err(e) = audio_packet_sender.send(Some(packet)) {
-                                    log::error!("{}", e);
-                                }
-                            }
-                            // } else if packet.stream() == subtitle_index {
-                            //     if let Err(e) = subtitle_deque.send(Some(packet)) {
-                            //         log::error!("{}", e);
-                            //     }
-                            // }
-                        }
-                    } else {
-                        play_ctrl.set_packet_finished(true);
-                        spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                        continue 'PACKETS;
-                    }
-                }
-            }
-        });
-    }
-
     pub fn packed<T: ffmpeg::frame::audio::Sample>(frame: &ffmpeg::frame::Audio) -> &[T] {
         if !frame.is_packed() {
             panic!("data is not packed");
