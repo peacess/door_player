@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Formatter};
 
 #[derive(Default, Clone)]
-pub struct VideoFrame {
+pub struct VideoPlayFrame {
     pub width: usize,
     pub height: usize,
     pub pts: i64,
@@ -9,7 +9,7 @@ pub struct VideoFrame {
     pub color_image: egui::ColorImage,
 }
 
-impl Debug for VideoFrame {
+impl Debug for VideoPlayFrame {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         //todo
         f.debug_struct("VideoFrame")
@@ -20,7 +20,7 @@ impl Debug for VideoFrame {
     }
 }
 
-impl VideoFrame {
+impl VideoPlayFrame {
     pub fn new(
         color_image: egui::ColorImage,
         width: usize,

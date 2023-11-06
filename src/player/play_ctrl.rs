@@ -10,9 +10,9 @@ use ringbuf::SharedRb;
 
 use crate::kits::Shared;
 use crate::player::{AV_TIME_BASE_RATIONAL, CommandGo, RingBufferProducer, timestamp_to_millisecond, VIDEO_SYNC_THRESHOLD_MIN};
-use crate::player::audio::{AudioDevice, AudioFrame};
+use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::VIDEO_SYNC_THRESHOLD_MAX;
-use crate::player::video::VideoFrame;
+use crate::player::video::VideoPlayFrame;
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum PlayerState {
@@ -34,14 +34,15 @@ unsafe impl NoUninit for PlayerState {}
 
 #[derive(Debug, Default)]
 pub struct Clock {
-    pts: i64,
-    frame_duration: i64,
     ///
     q2d: f64,
+
+    pts: std::sync::atomic::AtomicI64,
+    frame_duration: std::sync::atomic::AtomicI64,
     /// 播放时刻
-    play_ts: f64,
+    play_ts: atomic::Atomic<f64>,
     /// frame的播放时长
-    play_duration: f64,
+    play_duration: atomic::Atomic<f64>,
 }
 
 impl Clock {
@@ -53,18 +54,18 @@ impl Clock {
     }
 
     pub fn play_ts(&self, frames: i64) -> f64 {
-        self.play_ts + frames as f64 * self.q2d
+        self.play_ts.load(Ordering::Relaxed) + frames as f64 * self.q2d
     }
 
     pub fn play_ts_duration(&self) -> (f64, f64) {
-        (self.play_ts, self.play_duration)
+        (self.play_ts.load(Ordering::Relaxed), self.play_duration.load(Ordering::Relaxed))
     }
 
-    pub fn update(&mut self, pts: i64, frame_duration: i64) {
-        self.pts = pts;
-        self.frame_duration = frame_duration;
-        self.play_ts = pts as f64 * self.q2d;
-        self.play_duration = frame_duration as f64 * self.q2d;
+    pub fn update(&self, pts: i64, frame_duration: i64) {
+        self.pts.store(pts, Ordering::Relaxed);
+        self.frame_duration.store(frame_duration, Ordering::Relaxed);
+        self.play_ts.store(pts as f64 * self.q2d, Ordering::Relaxed);
+        self.play_duration.store(frame_duration as f64 * self.q2d, Ordering::Relaxed);
     }
 }
 
@@ -73,11 +74,11 @@ pub struct PlayCtrl {
     pub player_state: Shared<PlayerState>,
     packet_finished: Arc<AtomicBool>,
     video_finished: Arc<AtomicBool>,
-    video_clock: Arc<Mutex<Clock>>,
-    pub(crate) audio_dev: Arc<AudioDevice>,
+    video_clock: Arc<Clock>,
+    pub audio_dev: Arc<AudioDevice>,
     audio_finished: Arc<AtomicBool>,
     pub audio_volume: Shared<f32>,
-    audio_clock: Arc<Mutex<Clock>>,
+    audio_clock: Arc<Clock>,
     /// The player's texture handle.
     pub texture_handle: egui::TextureHandle,
     producer: Arc<Mutex<RingBufferProducer<f32>>>,
@@ -89,6 +90,18 @@ pub struct PlayCtrl {
     pub video_elapsed_ms_override: Shared<i64>,
 
     pub command_go: Shared<CommandGo>,
+
+    pub video_packet_receiver: Option<kanal::Receiver<Option<ffmpeg::Packet>>>,
+    pub video_packet_sender: Option<kanal::Sender<Option<ffmpeg::Packet>>>,
+    pub video_play_receiver: Option<kanal::Receiver<VideoPlayFrame>>,
+    pub video_play_sender: Option<kanal::Sender<VideoPlayFrame>>,
+    pub video_stream_time_base: Option<ffmpeg::Rational>,
+
+    pub audio_packet_receiver: Option<kanal::Receiver<Option<ffmpeg::Packet>>>,
+    pub audio_packet_sender: Option<kanal::Sender<Option<ffmpeg::Packet>>>,
+    pub audio_play_receiver: Option<kanal::Receiver<AudioPlayFrame>>,
+    pub audio_play_sender: Option<kanal::Sender<AudioPlayFrame>>,
+    pub audio_stream_time_base: Option<ffmpeg::Rational>,
 }
 
 impl PlayCtrl {
@@ -97,33 +110,54 @@ impl PlayCtrl {
         producer: ringbuf::Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
         audio_dev: Arc<AudioDevice>,
         texture_handle: TextureHandle,
-        video_q2d: f64, audio_q2d: f64,
+        video_stream_time_base: Option<ffmpeg::Rational>, audio_stream_time_base: Option<ffmpeg::Rational>,
     ) -> Self {
         let demux_finished = Arc::new(AtomicBool::new(false));
         let audio_finished = Arc::new(AtomicBool::new(false));
         let video_finished = Arc::new(AtomicBool::new(false));
-        let video_clock = Arc::new(Mutex::new(Clock::new(video_q2d)));
-        let audio_clock = Arc::new(Mutex::new(Clock::new(audio_q2d)));
+        let video_clock = {
+            let q2d = match video_stream_time_base {
+                None => 0.0,
+                Some(t) => f64::from(t)
+            };
+            Arc::new(Clock::new(f64::from(q2d)))
+        };
+        let audio_clock = {
+            let q2d = match audio_stream_time_base {
+                None => 0.0,
+                Some(t) => f64::from(t)
+            };
+            Arc::new(Clock::new(q2d))
+        };
 
         Self {
             player_state: Shared::new(PlayerState::Paused),
-            // start,
             packet_finished: demux_finished,
+
             video_finished,
             video_clock,
             audio_dev,
             audio_finished,
-            audio_clock,
             audio_volume: Shared::new(0.5),
+            audio_clock,
             texture_handle,
             producer: Arc::new(Mutex::new(producer)),
-            video_elapsed_ms: Shared::new(0),
-            audio_elapsed_ms: Shared::new(0),
-
-            command_go: Shared::new(CommandGo::None),
             duration,
             duration_ms: timestamp_to_millisecond(duration, AV_TIME_BASE_RATIONAL),
+            video_elapsed_ms: Shared::new(0),
+            audio_elapsed_ms: Shared::new(0),
             video_elapsed_ms_override: Shared::new(-1),
+            command_go: Shared::new(CommandGo::None),
+            video_packet_receiver: None,
+            video_packet_sender: None,
+            video_play_receiver: None,
+            video_play_sender: None,
+            video_stream_time_base,
+            audio_packet_receiver: None,
+            audio_packet_sender: None,
+            audio_play_receiver: None,
+            audio_play_sender: None,
+            audio_stream_time_base,
         }
     }
 
@@ -156,10 +190,37 @@ impl PlayCtrl {
         self.packet_finished.load(Ordering::Relaxed)
     }
 
+    pub fn clean_receiver(&self) {
+        if let Some(receiver) = &self.video_packet_receiver {
+            let size = receiver.len();
+            for _ in 0..size {
+                let _ = receiver.try_recv();
+            }
+        }
+        if let Some(receiver) = &self.video_play_receiver {
+            let size = receiver.len();
+            for _ in 0..size {
+                let _ = receiver.try_recv();
+            }
+        }
+        if let Some(receiver) = &self.audio_packet_receiver {
+            let size = receiver.len();
+            for _ in 0..size {
+                let _ = receiver.try_recv();
+            }
+        }
+        if let Some(receiver) = &self.audio_play_receiver {
+            let size = receiver.len();
+            for _ in 0..size {
+                let _ = receiver.try_recv();
+            }
+        }
+    }
+
     pub fn audio_config(&self) -> cpal::SupportedStreamConfig {
         self.audio_dev.stream_input_config()
     }
-    pub fn play_audio(&mut self, mut frame: AudioFrame) -> Result<(), anyhow::Error> {
+    pub fn play_audio(&mut self, mut frame: AudioPlayFrame) -> Result<(), anyhow::Error> {
         let mut producer = self.producer.lock();
         while producer.free_len() < frame.samples.len() {
             // log::info!("play audio: for : {}", producer.free_len());
@@ -183,12 +244,11 @@ impl PlayCtrl {
             }
         }
 
-
         // spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())
     }
 
-    pub fn play_video(&mut self, frame: VideoFrame, ctx: &egui::Context) -> Result<(), anyhow::Error> {
+    pub fn play_video(&mut self, frame: VideoPlayFrame, ctx: &egui::Context) -> Result<(), anyhow::Error> {
         let delay = self.update_video_clock(frame.pts, frame.duration);
         self.texture_handle.set(frame.color_image, egui::TextureOptions::LINEAR);
         ctx.request_repaint();
@@ -201,20 +261,31 @@ impl PlayCtrl {
 
     #[inline]
     fn update_audio_clock(&self, pts: i64, duration: i64) {
-        let mut clock = self.audio_clock.lock();
-        clock.update(pts, duration);
+        self.audio_clock.update(pts, duration);
+        if let Some(time_base) = &self.audio_stream_time_base {
+            let t = timestamp_to_millisecond(pts, time_base.clone());
+            self.audio_elapsed_ms.set(t);
+            if self.video_stream_time_base.is_none() {
+                //if no video stream, we should not update video elapsed time
+                self.video_elapsed_ms.set(t);
+            }
+        }
     }
 
     #[inline]
     fn update_video_clock(&self, pts: i64, duration: i64) -> f64 {
-        self.video_clock.lock().update(pts, duration);
+        self.video_clock.update(pts, duration);
+        if let Some(time_base) = &self.video_stream_time_base {
+            let t = timestamp_to_millisecond(pts, time_base.clone());
+            self.video_elapsed_ms.set(t);
+        }
         self.compute_video_delay()
     }
 
     fn compute_video_delay(&self) -> f64 {
         let cache_frame = self.producer.lock().len() as i64 / 2000 + 2;
-        let audio_clock = self.audio_clock.lock().play_ts(cache_frame);
-        let (video_clock, duration) = self.video_clock.lock().play_ts_duration();
+        let audio_clock = self.audio_clock.play_ts(cache_frame);
+        let (video_clock, duration) = self.video_clock.play_ts_duration();
         let diff = video_clock - audio_clock;
         if audio_clock == 0.0 || video_clock == 0.0 {
             duration

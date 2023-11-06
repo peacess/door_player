@@ -1,7 +1,7 @@
 use std::fmt::{Debug, Formatter};
 
 #[derive(Default, Clone)]
-pub struct SubtitleFrame {
+pub struct SubtitlePlayFrame {
     pub pts: f64,
     pub duration: i64,
     pub pure_text: String,
@@ -11,7 +11,7 @@ pub struct SubtitleFrame {
     pub height: u32,
 }
 
-impl Debug for SubtitleFrame {
+impl Debug for SubtitlePlayFrame {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SubtitleFrame")
             // .field("color_image", &self.color_image)
@@ -22,7 +22,7 @@ impl Debug for SubtitleFrame {
     }
 }
 
-impl SubtitleFrame {
+impl SubtitlePlayFrame {
     pub fn new(
         sub_text: String,
         pts: f64,

@@ -6,7 +6,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crate::player::RingBufferConsumer;
 
 #[derive(Clone)]
-pub struct AudioFrame {
+pub struct AudioPlayFrame {
     pub samples: Vec<f32>,
     pub channels: u16,
     pub sample_rate: u32,
@@ -14,7 +14,7 @@ pub struct AudioFrame {
     pub duration: i64,
 }
 
-impl AudioFrame {
+impl AudioPlayFrame {
     pub fn new(
         samples: Vec<f32>,
         channels: u16,
@@ -32,7 +32,7 @@ impl AudioFrame {
     }
 }
 
-impl std::fmt::Debug for AudioFrame {
+impl std::fmt::Debug for AudioPlayFrame {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AudioFrame")
             // .field("samples len", &self.samples.len())
