@@ -5,7 +5,7 @@ use eframe::Frame;
 use egui::{Context, DroppedFile, Event, Key, PointerButton, Ui};
 
 use crate::kits::Shared;
-use crate::player::{CommandGo, CommandUi, Player, PlayerState};
+use crate::player::{CommandGo, CommandUi, FfmpegKit, Player, PlayerState};
 
 pub struct AppUi {
     collapse: bool,
@@ -212,13 +212,15 @@ impl AppUi {
     }
 
     fn select_file() -> Option<PathBuf> {
-        rfd::FileDialog::new().add_filter("videos", &["mp4", "mkv", "ogg", "webm", "wmv", "mov", "avi", "mp3", "flv"]).pick_file()
+        let names = FfmpegKit::demuxers();
+        // &["mp4", "mkv", "ogg", "webm", "wmv", "mov", "avi", "mp3", "flv"]
+        rfd::FileDialog::new().add_filter("videos", &names).pick_file()
     }
 
     fn open_file(&mut self, ctx: &Context, buf: PathBuf) {
         self.media_path = buf.to_string_lossy().to_string();
         if !self.media_path.is_empty() {
-            //这里需要创建新的，不然first frame可能会显示上个视频的内容
+            //create a new texture, do not use the old one
             let texture_handle = Player::default_texture_handle(ctx);
             match Player::new(ctx, texture_handle, self.command_ui.clone(), &self.media_path) {
                 Ok(p) => {
