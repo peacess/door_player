@@ -29,7 +29,10 @@ sudo apt install libass-dev libsdl2-dev libavdevice-dev
 clone the ffmpeg  
 cd ffmpeg  
 // --enable-libass --enable-avfilter : add filter subtitles  
-./configure --enable-gpl --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*  
+// ./configure --enable-gpl --enable-cross-compile --target-os=windows --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*
+./configure --enable-gpl --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*
+
+
 make -j16 && sudo make install && sudo make uninstall  
 
 # see

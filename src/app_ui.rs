@@ -212,9 +212,9 @@ impl AppUi {
     }
 
     fn select_file() -> Option<PathBuf> {
-        // let names = FfmpegKit::demuxers();
+        let names = FfmpegKit::demuxers();
         // &["mp4", "mkv", "ogg", "webm", "wmv", "mov", "avi", "mp3", "flv"]
-        rfd::FileDialog::new().add_filter("videos", &["*"]).pick_file()
+        rfd::FileDialog::new().add_filter("videos", &names).pick_file()
     }
 
     fn open_file(&mut self, ctx: &Context, buf: PathBuf) {

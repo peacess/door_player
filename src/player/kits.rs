@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
 use std::sync::Arc;
 
@@ -34,9 +35,36 @@ impl FfmpegKit {
                 if input_format.is_null() {
                     break;
                 }
-                names.push(CStr::from_ptr((*input_format).name).to_str().expect("").to_string());
+                if !(*input_format).name.is_null() {
+                    let name = CStr::from_ptr((*input_format).name).to_str().expect("");
+                    let ns: Vec<_> = name.split(",").map(|s| s.to_string()).collect();
+                    names.extend(ns);
+                }
+                // {
+                //     if  !(*input_format).long_name.is_null() {
+                //         log::info!("long_name: {}", CStr::from_ptr((*input_format).long_name).to_str().expect(""));
+                //     }
+                //     log::info!("name: {}, flags: {}", CStr::from_ptr((*input_format).name).to_str().expect(""),
+                //         (*input_format).flags
+                //     );
+                //     if !(*input_format).extensions.is_null() {
+                //         log::info!("extensions: {}", CStr::from_ptr((*input_format).extensions).to_str().expect(""));
+                //     }
+                //     if !(*input_format).mime_type.is_null() {
+                //         log::info!("mime_type: {}", CStr::from_ptr((*input_format).mime_type).to_str().expect(""));
+                //     }
+                //     // log::info!("raw_codec_id: {}, priv_data_size {}\n", (*input_format).raw_codec_id, (*input_format).raw_codec_id);
+                //     log::info!("\n{:?}\n", &*input_format);
+                //
+                // }
             }
         }
+        if !names.contains(&"mkv".to_string()) {
+            names.push("mkv".to_string());
+        }
+        names = HashSet::<String>::from_iter(names.into_iter()).into_iter().collect::<Vec<String>>();
+        names.sort();
+        log::info!("all file type: {:?}", names);
         names
     }
 }

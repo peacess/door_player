@@ -55,19 +55,35 @@ impl Player {
                 Some(video_stream) => {
                     let video_index = video_stream.index();
 
-                    let mut video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
+                    #[cfg(not(feature = "meh_ffmpeg"))]
+                        let mut video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
+                    #[cfg(feature = "meh_ffmpeg")]
+                        let mut video_context = ffmpeg::codec::context::Context::new();
                     {
+                        #[cfg(feature = "meh_ffmpeg")]
+                        video_context.set_parameters(video_stream.parameters());
                         let mut thread_conf = video_context.threading();
-                        log::info!("video threads : {:?}", &thread_conf);
+                        log::info!("video threads default : {:?}", &thread_conf);
                         thread_conf.count = 2;
                         thread_conf.kind = ffmpeg::threading::Type::Slice;
+                        log::info!("video threads new : {:?}", &thread_conf);
                         video_context.set_threading(thread_conf);
                     }
+                    // ffmpeg::codec::Context::new()
 
                     let video_decoder = video_context.decoder().video()?;
-                    log::info!("video_stream time base: {}", video_stream.time_base());
-                    log::info!("video_decoder time base: {}", video_decoder.time_base());
-                    (video_index, Some(video_decoder), Some(video_stream.time_base()))
+                    #[cfg(not(feature = "meh_ffmpeg"))]
+                    {
+                        log::info!("video_stream time base: {}", video_stream.time_base());
+                        log::info!("video_decoder time base: {}", video_decoder.time_base());
+                        (video_index, Some(video_decoder), Some(video_stream.time_base()))
+                    }
+                    #[cfg(feature = "meh_ffmpeg")]
+                    {
+                        log::info!("video_stream time base: {}", video_stream.time_base().expect(""));
+                        log::info!("video_decoder time base: {}", video_decoder.time_base().expect(""));
+                        (video_index, Some(video_decoder), video_stream.time_base())
+                    }
                 }
                 None => (0, None, None)
             }
@@ -79,18 +95,34 @@ impl Player {
             let audio_stream = video_input.streams().best(ffmpeg::media::Type::Audio);
             if let Some(audio_stream) = audio_stream {
                 let audio_index = audio_stream.index();
-                let mut audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
+                #[cfg(not(feature = "meh_ffmpeg"))]
+                    let mut audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
+                #[cfg(feature = "meh_ffmpeg")]
+                    let mut audio_context = ffmpeg::codec::context::Context::new();
                 {
+                    #[cfg(feature = "meh_ffmpeg")]
+                    audio_context.set_parameters(audio_stream.parameters());
+
                     let mut thread_conf = audio_context.threading();
-                    log::info!("audio threads : {:?}", &thread_conf);
-                    thread_conf.count = 2;
+                    log::info!("audio threads default : {:?}", &thread_conf);
+                    thread_conf.count = 1;
                     thread_conf.kind = ffmpeg::threading::Type::Slice;
+                    log::info!("audio threads new : {:?}", &thread_conf);
                     audio_context.set_threading(thread_conf);
                 }
                 let audio_decoder = audio_context.decoder().audio()?;
-                log::info!("audio_stream time base: {}", audio_stream.time_base());
-                log::info!("audio_decoder time base: {}", audio_decoder.time_base());
-                (audio_index, Some(audio_decoder), Some(audio_stream.time_base()))
+                #[cfg(not(feature = "meh_ffmpeg"))]
+                {
+                    log::info!("audio_stream time base: {}", audio_stream.time_base());
+                    log::info!("audio_decoder time base: {}", audio_decoder.time_base());
+                    (audio_index, Some(audio_decoder), Some(audio_stream.time_base()))
+                }
+                #[cfg(feature = "meh_ffmpeg")]
+                {
+                    log::info!("audio_stream time base: {}", audio_stream.time_base().expect(""));
+                    log::info!("audio_decoder time base: {}", audio_decoder.time_base().expect(""));
+                    (audio_index, Some(audio_decoder), audio_stream.time_base())
+                }
             } else {
                 (0, None, None)
             }
@@ -102,7 +134,11 @@ impl Player {
             match &video_decoder {
                 None => None,
                 Some(video_decoder) => {
-                    let video_time_base = video_input.stream(video_index).expect("").time_base();
+                    #[cfg(not(feature = "meh_ffmpeg"))]
+                        let video_time_base = video_input.stream(video_index).expect("").time_base();
+                    #[cfg(feature = "meh_ffmpeg")]
+                        let video_time_base = video_input.stream(video_index).expect("").time_base().expect("");
+
                     if video_input.streams().best(ffmpeg::media::Type::Subtitle).is_some() {
                         match Self::graph(&video_decoder, file, video_time_base) {
                             Err(e) => {
@@ -119,11 +155,16 @@ impl Player {
         };
 
         let mut player = {
+            #[cfg(not(feature = "meh_ffmpeg"))]
+                let duration = video_input.duration();
+            #[cfg(feature = "meh_ffmpeg")]
+                let duration = video_input.duration().expect("");
+
             let play_ctrl = {
                 let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820).split();
                 let audio_dev = Arc::new(AudioDevice::new(consumer)?);
                 audio_dev.resume();
-                PlayCtrl::new(video_input.duration(), producer, audio_dev, texture_handle, video_stream_time_base, audio_stream_time_base)
+                PlayCtrl::new(duration, producer, audio_dev, texture_handle, video_stream_time_base, audio_stream_time_base)
             };
             Self {
                 play_ctrl,
@@ -235,11 +276,18 @@ impl Player {
         let mut graph = ffmpeg::filter::Graph::new();
         let src = ffmpeg::filter::find("buffer").ok_or(ffmpeg::Error::OptionNotFound)?;
         let sink = ffmpeg::filter::find("buffersink").ok_or(ffmpeg::Error::OptionNotFound)?;
-        let args = format!("video_size={}x{}:pix_fmt={}:time_base={}/{}:pixel_aspect={}/{}",
-                           dec_ctx.width(), dec_ctx.height(), ffmpeg::ffi::AVPixelFormat::from(dec_ctx.format()) as i32,
-                           time_base.numerator(), time_base.denominator(),
-                           dec_ctx.aspect_ratio().numerator(),
-                           dec_ctx.aspect_ratio().denominator());
+        #[cfg(not(feature = "meh_ffmpeg"))]
+            let args = format!("video_size={}x{}:pix_fmt={}:time_base={}/{}:pixel_aspect={}/{}",
+                               dec_ctx.width(), dec_ctx.height(), ffmpeg::ffi::AVPixelFormat::from(dec_ctx.format()) as i32,
+                               time_base.numerator(), time_base.denominator(),
+                               dec_ctx.aspect_ratio().numerator(),
+                               dec_ctx.aspect_ratio().denominator());
+        #[cfg(feature = "meh_ffmpeg")]
+            let args = format!("video_size={}x{}:pix_fmt={}:time_base={}/{}:pixel_aspect={}/{}",
+                               dec_ctx.width(), dec_ctx.height(), ffmpeg::ffi::AVPixelFormat::from(dec_ctx.format().into()) as i32,
+                               time_base.numerator(), time_base.denominator(),
+                               dec_ctx.aspect_ratio().numerator(),
+                               dec_ctx.aspect_ratio().denominator());
         log::info!("{}",args);
         let _ = graph.add(&src, "in", &args)?;
         let _ = graph.add(&sink, "out", "")?;
@@ -253,6 +301,7 @@ impl Player {
         Ok(graph)
     }
 
+    #[cfg(not(feature = "meh_ffmpeg"))]
     fn first_frame(input: &mut ffmpeg::format::context::Input) -> Result<ffmpeg::frame::Video, anyhow::Error> {
         let video_stream = input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
         let video_index = video_stream.index();
@@ -277,14 +326,56 @@ impl Player {
         }
     }
 
+    #[cfg(feature = "meh_ffmpeg")]
+    fn first_frame(input: &mut ffmpeg::format::context::Input) -> Result<ffmpeg::frame::Video, anyhow::Error> {
+        let video_stream = input.streams().best(ffmpeg::media::Type::Video).ok_or(ffmpeg::Error::InvalidData)?;
+        let video_index = video_stream.index();
+        let mut video_context = ffmpeg::codec::context::Context::new();
+        video_context.set_parameters(video_stream.parameters());
+        let mut video_decoder = video_context.decoder().video()?;
+        loop {
+            if let Some(Ok((_, packet))) = input.packets().next() {
+                if unsafe { packet.is_empty() || packet.stream() != video_index } {
+                    continue;
+                }
+                video_decoder.send_packet(&packet)?;
+                let mut frame = ffmpeg::frame::Video::empty();
+                match video_decoder.receive_frame(&mut frame) {
+                    Err(e) => {
+                        log::debug!("{}", e);
+                    }
+                    Ok(_) => {
+                        return Ok(frame);
+                    }
+                }
+            }
+        }
+    }
+
     fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, audio_packet_receiver: Receiver<Option<ffmpeg::Packet>>, audio_play_sender: Sender<AudioPlayFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let mut audio_re_sampler = {
             let stream_config = play_ctrl.audio_config();
+            #[cfg(not(feature = "meh_ffmpeg"))]
             match ResamplingContext::get(
                 audio_decoder.format(),
                 audio_decoder.channel_layout(),
                 audio_decoder.rate() as u32,
+                to_sample(stream_config.sample_format()),
+                ffmpeg::ChannelLayout::default(stream_config.channels() as i32),//ffmpeg::ChannelLayout::STEREO,
+                stream_config.sample_rate().0,
+            ) {
+                Err(e) => {
+                    log::error!("{}", e);
+                    panic!("{}", e);
+                }
+                Ok(t) => t
+            }
+            #[cfg(feature = "meh_ffmpeg")]
+            match ResamplingContext::get(
+                audio_decoder.format(),
+                audio_decoder.channel_layout(),
+                audio_decoder.sample_rate(),
                 to_sample(stream_config.sample_format()),
                 ffmpeg::ChannelLayout::default(stream_config.channels() as i32),//ffmpeg::ChannelLayout::STEREO,
                 stream_config.sample_rate().0,
@@ -325,10 +416,19 @@ impl Player {
                             let packet_frame = frame_old.packet();
                             let v = play_ctrl.audio_volume.get();
                             let samples: Vec<f32> = re_samples_ref.iter().map(|s| s * v).collect();
-                            let audio_frame = AudioPlayFrame {
+                            #[cfg(not(feature = "meh_ffmpeg"))]
+                                let audio_frame = AudioPlayFrame {
                                 samples,
                                 channels: frame_resample.channels(),
                                 sample_rate: frame_resample.rate(),
+                                pts: packet_frame.pts,
+                                duration: packet_frame.duration,
+                            };
+                            #[cfg(feature = "meh_ffmpeg")]
+                                let audio_frame = AudioPlayFrame {
+                                samples,
+                                channels: frame_resample.channels(),
+                                sample_rate: frame_resample.sample_rate(),
                                 pts: packet_frame.pts,
                                 duration: packet_frame.duration,
                             };
@@ -594,9 +694,16 @@ impl Player {
                         }
                         Ok(b) => {
                             if b {
-                                let mut subtitle_frame = SubtitlePlayFrame {
+                                #[cfg(not(feature = "meh_ffmpeg"))]
+                                    let mut subtitle_frame = SubtitlePlayFrame {
                                     pts: sub.pts().unwrap_or_default() as f64,
                                     duration: packet.duration(),
+                                    ..Default::default()
+                                };
+                                #[cfg(feature = "meh_ffmpeg")]
+                                    let mut subtitle_frame = SubtitlePlayFrame {
+                                    pts: sub.pts().unwrap_or_default() as f64,
+                                    duration: packet.duration().expect(""),
                                     ..Default::default()
                                 };
                                 let mut sub_text = String::default();
@@ -642,7 +749,10 @@ impl Player {
     fn read_packet_run(&self, mut input: ffmpeg::format::context::Input, audio_packet_sender: Option<kanal::Sender<Option<ffmpeg::Packet>>>, audio_index: usize,
                        video_packet_sender: Option<kanal::Sender<Option<ffmpeg::Packet>>>, video_index: usize) {
         let play_ctrl = self.play_ctrl.clone();
-        let duration = input.duration();
+        #[cfg(not(feature = "meh_ffmpeg"))]
+            let duration = input.duration();
+        #[cfg(feature = "meh_ffmpeg")]
+            let duration = input.duration().expect("");
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
             'PACKETS: loop {
                 if play_ctrl.player_state.get() == PlayerState::Stopped {
@@ -734,6 +844,7 @@ impl Player {
                     }
                 }
 
+                #[cfg(not(feature = "meh_ffmpeg"))]
                 for _ in 0..packets {
                     if let Some((_, packet)) = input.packets().next() {
                         if unsafe { !packet.is_empty() } {
@@ -756,6 +867,40 @@ impl Player {
                         play_ctrl.set_packet_finished(true);
                         spin_sleep::sleep(PLAY_MIN_INTERVAL);
                         continue 'PACKETS;
+                    }
+                }
+
+                #[cfg(feature = "meh_ffmpeg")]
+                for _ in 0..packets {
+                    match input.packets().next() {
+                        Some(Ok((_, packet))) => {
+                            if unsafe { !packet.is_empty() } {
+                                if audio_packet_sender.is_some() && packet.stream() == audio_index {
+                                    if let Err(e) = audio_packet_sender.as_ref().expect("").send(Some(packet)) {
+                                        log::error!("{}", e);
+                                    }
+                                } else if video_packet_sender.is_some() && packet.stream() == video_index {
+                                    if let Err(e) = video_packet_sender.as_ref().expect("").send(Some(packet)) {
+                                        log::error!("{}", e);
+                                    }
+                                }
+                                // } else if packet.stream() == subtitle_index {
+                                //     if let Err(e) = subtitle_deque.send(Some(packet)) {
+                                //         log::error!("{}", e);
+                                //     }
+                                // }
+                            }
+                        }
+                        Some(Err(e)) => {
+                            play_ctrl.set_packet_finished(true);
+                            spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                            continue 'PACKETS;
+                        }
+                        None => {
+                            play_ctrl.set_packet_finished(true);
+                            spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                            continue 'PACKETS;
+                        }
                     }
                 }
             }
@@ -1255,6 +1400,7 @@ fn to_sample(sample_format: cpal::SampleFormat) -> ffmpeg::format::Sample {
     }
 }
 
+#[cfg(not(feature = "meh_ffmpeg"))]
 fn print_meda_info(context: &ffmpeg::format::context::Input) -> Result<(), anyhow::Error> {
     for (k, v) in context.metadata().iter() {
         println!("{}: {}", k, v);
@@ -1322,6 +1468,92 @@ fn print_meda_info(context: &ffmpeg::format::context::Input) -> Result<(), anyho
                 println!("\tmax_rate: {}", audio.max_bit_rate());
                 println!("\tdelay: {}", audio.delay());
                 println!("\taudio.rate: {}", audio.rate());
+                println!("\taudio.channels: {}", audio.channels());
+                println!("\taudio.format: {:?}", audio.format());
+                println!("\taudio.frames: {}", audio.frames());
+                println!("\taudio.align: {}", audio.align());
+                println!("\taudio.channel_layout: {:?}", audio.channel_layout());
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "meh_ffmpeg")]
+fn print_meda_info(context: &ffmpeg::format::context::Input) -> Result<(), anyhow::Error> {
+    for (k, v) in context.metadata().iter() {
+        println!("{}: {}", k, v);
+    }
+
+    if let Some(stream) = context.streams().best(ffmpeg::media::Type::Video) {
+        println!("Best video stream index: {}", stream.index());
+    }
+
+    if let Some(stream) = context.streams().best(ffmpeg::media::Type::Audio) {
+        println!("Best audio stream index: {}", stream.index());
+    }
+
+    if let Some(stream) = context.streams().best(ffmpeg::media::Type::Subtitle) {
+        println!("Best subtitle stream index: {}", stream.index());
+    }
+
+    println!(
+        "duration (seconds): {:?}",
+        context
+            .duration()
+            .map(|d| d as f64 / f64::from(ffmpeg::ffi::AV_TIME_BASE))
+    );
+
+    for stream in context.streams() {
+        println!("stream index {}:", stream.index());
+        println!("\ttime_base: {:?}", stream.time_base());
+        println!("\tstart_time: {:?}", stream.start_time());
+        println!("\tduration (stream timebase): {:?}", stream.duration());
+        println!(
+            "\tduration (seconds): {:?}",
+            stream
+                .time_base()
+                .zip(stream.duration())
+                .map(|(tb, d)| d as f64 * f64::from(tb))
+        );
+        println!("\tframes: {}", stream.frames());
+        println!("\tdisposition: {:?}", stream.disposition());
+        println!("\tdiscard: {:?}", stream.discard());
+        println!("\tframe rate: {}", stream.frame_rate());
+
+        let codec_par = stream.parameters();
+        println!("\tmedium: {:?}", codec_par.medium());
+        println!("\tid: {:?}", codec_par.id());
+
+        let dec = stream.decoder().expect("Unable to open decoder");
+
+        if codec_par.medium() == ffmpeg::media::Type::Video {
+            if let Ok(video) = dec.video() {
+                println!("\tbit_rate: {}", video.bit_rate());
+                println!("\tmax_rate: {}", video.max_bit_rate());
+                println!("\tdelay: {}", video.delay());
+                println!("\tvideo.width: {}", video.width());
+                println!("\tvideo.height: {}", video.height());
+                println!("\tvideo.format: {:?}", video.format());
+                println!("\tvideo.has_b_frames: {}", video.has_b_frames());
+                println!("\tvideo.aspect_ratio: {}", video.aspect_ratio());
+                println!("\tvideo.color_space: {:?}", video.color_space());
+                println!("\tvideo.color_range: {:?}", video.color_range());
+                println!("\tvideo.color_primaries: {:?}", video.color_primaries());
+                println!(
+                    "\tvideo.color_transfer_characteristic: {:?}",
+                    video.color_transfer_characteristic()
+                );
+                println!("\tvideo.chroma_location: {:?}", video.chroma_location());
+                println!("\tvideo.references: {}", video.references());
+                println!("\tvideo.intra_dc_precision: {}", video.intra_dc_precision());
+            }
+        } else if codec_par.medium() == ffmpeg::media::Type::Audio {
+            if let Ok(audio) = dec.audio() {
+                println!("\tbit_rate: {}", audio.bit_rate());
+                println!("\tmax_rate: {}", audio.max_bit_rate());
+                println!("\tdelay: {}", audio.delay());
+                println!("\taudio.sample_rate: {}", audio.sample_rate());
                 println!("\taudio.channels: {}", audio.channels());
                 println!("\taudio.format: {:?}", audio.format());
                 println!("\taudio.frames: {}", audio.frames());

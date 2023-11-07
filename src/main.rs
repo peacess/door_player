@@ -3,6 +3,7 @@ use std::io::Write;
 use env_logger::Env;
 
 use door_player::AppUi;
+use door_player::ffmpeg;
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))

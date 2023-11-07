@@ -17,8 +17,8 @@ egui = "0.23.0"
 eframe = { version = "0.23.0"}
 
 rfd = "0.12.0"
-ffmpeg = {package = "ffmpeg-next", version = "6.0.0"}
-#ffmpeg = {version = "0.6.0", git = "https://github.com/meh/rust-ffmpeg"}
+ffmpeg-next = {version = "6.0.0"}
+#ffmpeg = {version = "0.6.0", git = "https://github.com/meh/rust-ffmpeg", optional = true}
 #ffmpeg = {package = "ffmpeg-the-third",version = "1.2.2+ffmpeg-6.0"}
 
 cpal = "0.15.2"
@@ -36,10 +36,11 @@ chrono ="0.4"
 anyhow = "1.0"
 
 [profile.dev]
-#opt-level= 2
+opt-level= 1
 
 [features]
 default = []
+meh_ffmpeg = []
 
 [lib]
 name="door_player"
