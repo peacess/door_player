@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use ringbuf::SharedRb;
 
 use crate::kits::Shared;
-use crate::player::{AV_TIME_BASE_RATIONAL, CommandGo, RingBufferProducer, timestamp_to_millisecond, VIDEO_SYNC_THRESHOLD_MIN};
+use crate::player::{AV_TIME_BASE_RATIONAL, CommandGo, kits::{RingBufferProducer, timestamp_to_millisecond}, VIDEO_SYNC_THRESHOLD_MIN};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::VIDEO_SYNC_THRESHOLD_MAX;
 use crate::player::video::VideoPlayFrame;
@@ -77,7 +77,7 @@ pub struct PlayCtrl {
     video_clock: Arc<Clock>,
     pub audio_dev: Arc<AudioDevice>,
     audio_finished: Arc<AtomicBool>,
-    pub audio_volume: Shared<f32>,
+    pub audio_volume: Shared<f64>,
     audio_clock: Arc<Clock>,
     /// The player's texture handle.
     pub texture_handle: egui::TextureHandle,

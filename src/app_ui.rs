@@ -5,7 +5,8 @@ use eframe::Frame;
 use egui::{Context, DroppedFile, Event, Key, PointerButton, Ui};
 
 use crate::kits::Shared;
-use crate::player::{CommandGo, CommandUi, FfmpegKit, Player, PlayerState};
+use crate::player;
+use crate::player::{CommandGo, CommandUi, kits::FfmpegKit, Player, PlayerState};
 
 pub struct AppUi {
     collapse: bool,
@@ -45,8 +46,14 @@ impl AppUi {
                                 Key::ArrowRight => {
                                     player.go_ahead_ui(&self.command_go_ui);
                                 }
-                                Key::ArrowUp => {}
-                                Key::ArrowDown => {}
+                                Key::ArrowUp | Key::PlusEquals => {
+                                    let v = player::kits::Volume::plus_volume(player.audio_volume.get());
+                                    player.audio_volume.set(v);
+                                }
+                                Key::ArrowDown | Key::Minus => {
+                                    let v = player::kits::Volume::minus_volume(player.audio_volume.get());
+                                    player.audio_volume.set(v);
+                                }
                                 Key::Space => {
                                     let state = player.player_state.get();
                                     match state {
@@ -425,6 +432,22 @@ impl eframe::App for AppUi {
                         ui.horizontal(|ui| {
                             if ui.button("Go").clicked() {
                                 player.go_ahead_ui(&self.command_go_ui);
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            if ui.button(" + ").on_hover_text("+ Volume").clicked() {
+                                let v = player::kits::Volume::plus_volume(player.audio_volume.get());
+                                player.audio_volume.set(v);
+                            }
+                            let mut s = player::kits::Volume::int_volume(player.audio_volume.get());
+                            if ui.add(egui::Slider::new(&mut s, 0..=1000).suffix("")).changed() {
+                                let v = player::kits::Volume::f64_volume(s);
+                                player.audio_volume.set(v);
+                            };
+                            if ui.button(" - ").on_hover_text("- Volume").clicked() {
+                                let v = player::kits::Volume::minus_volume(player.audio_volume.get());
+                                player.audio_volume.set(v);
                             }
                         });
                     }

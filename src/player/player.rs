@@ -12,6 +12,7 @@ use ffmpeg::software::resampling::Context as ResamplingContext;
 use kanal::{Receiver, Sender};
 
 use crate::kits::Shared;
+use crate::player;
 use crate::player::{CommandGo, CommandUi, MAX_DIFF_MOVE_MOUSE, PlayerState, SubtitlePlayFrame};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
@@ -24,8 +25,6 @@ pub struct Player {
     pub play_ctrl: PlayCtrl,
     pub width: u32,
     pub height: u32,
-
-    pub max_audio_volume: f32,
 
     last_seek_ms: Option<i64>,
 
@@ -170,7 +169,6 @@ impl Player {
                 play_ctrl,
                 width: 0,
                 height: 0,
-                max_audio_volume: 1.0,
                 last_seek_ms: None,
                 mouth_move_ts: Utc::now().timestamp_millis(),
                 command_ui,
@@ -414,7 +412,7 @@ impl Player {
                                 frame_resample.plane(0)
                             };
                             let packet_frame = frame_old.packet();
-                            let v = play_ctrl.audio_volume.get();
+                            let v = play_ctrl.audio_volume.get() as f32;
                             let samples: Vec<f32> = re_samples_ref.iter().map(|s| s * v).collect();
                             #[cfg(not(feature = "meh_ffmpeg"))]
                                 let audio_frame = AudioPlayFrame {
@@ -1048,7 +1046,7 @@ impl Player {
             } else {
                 "⏸"
             };
-            let audio_volume_frac = self.audio_volume.get() / self.max_audio_volume;
+            let audio_volume_frac = self.audio_volume.get();
             let sound_icon = if self.get_mute() {
                 "🔇"
             } else if audio_volume_frac > 0.7 {
@@ -1140,73 +1138,22 @@ impl Player {
                     text_color,
                 );
 
-                if ui
-                    .interact(
-                        sound_icon_rect,
-                        image_res.id.with("sound_icon_sense"),
-                        Sense::click(),
-                    )
-                    .clicked()
-                {
+                if ui.interact(sound_icon_rect, image_res.id.with("sound_icon_sense"), Sense::click()).clicked() {
                     let mute = self.get_mute();
                     self.set_mute(!mute);
                 }
-
-                let sound_slider_outer_height = 124.;
-                let sound_slider_margin = 5.;
-                let sound_slider_opacity = 100;
                 let mut sound_slider_rect = sound_icon_rect;
-                sound_slider_rect.set_bottom(sound_icon_rect.top() - sound_slider_margin);
-                sound_slider_rect.set_top(sound_slider_rect.top() - sound_slider_outer_height);
+                sound_slider_rect.set_bottom(sound_icon_rect.top() - 10.0);
+                sound_slider_rect.set_top(sound_slider_rect.top() - 124.0);
 
-                let sound_slider_interact_rect = sound_slider_rect.expand(sound_slider_margin);
-                let sound_hovered = ui.rect_contains_pointer(sound_icon_rect);
-                let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_interact_rect);
-                let sound_anim_id = image_res.id.with("sound_anim");
-                let mut sound_anim_frac: f32 = ui
-                    .ctx()
-                    .memory_mut(|m| *m.data.get_temp_mut_or_default(sound_anim_id));
-                sound_anim_frac = ui.ctx().animate_bool_with_time(
-                    sound_anim_id,
-                    sound_hovered || (sound_slider_hovered && sound_anim_frac > 0.),
-                    0.2,
-                );
-                ui.ctx()
-                    .memory_mut(|m| m.data.insert_temp(sound_anim_id, sound_anim_frac));
-                let sound_slider_bg_color = Color32::from_black_alpha(sound_slider_opacity)
-                    .linear_multiply(sound_anim_frac);
-                let sound_bar_color = Color32::from_white_alpha(sound_slider_opacity)
-                    .linear_multiply(sound_anim_frac);
-                let mut sound_bar_rect = sound_slider_rect;
-                sound_bar_rect.set_top(
-                    sound_bar_rect.bottom()
-                        - (self.audio_volume.get() / self.max_audio_volume)
-                        * sound_bar_rect.height(),
-                );
-
-                ui.painter().rect_filled(
-                    sound_slider_rect,
-                    Rounding::same(5.),
-                    sound_slider_bg_color,
-                );
-
-                ui.painter()
-                    .rect_filled(sound_bar_rect, Rounding::same(5.), sound_bar_color);
-                let sound_slider_resp = ui.interact(
-                    sound_slider_rect,
-                    image_res.id.with("sound_slider_sense"),
-                    Sense::click_and_drag(),
-                );
-                if sound_anim_frac > 0. && sound_slider_resp.clicked()
-                    || sound_slider_resp.dragged()
-                {
-                    if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
-                        let sound_frac = 1.
-                            - ((hover_pos - sound_slider_rect.left_top()).y
-                            / sound_slider_rect.height())
-                            .max(0.)
-                            .min(1.);
-                        self.audio_volume.set(sound_frac * self.max_audio_volume);
+                let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_rect);
+                if seekbar_hovered || sound_slider_hovered {
+                    let mut volume = -player::kits::Volume::int_volume(self.audio_volume.get());
+                    let mut volume_slider = egui::Slider::new(&mut volume, -player::kits::Volume::MAX_INT_VOLUME..=0).vertical();
+                    volume_slider = volume_slider.smart_aim(false).show_value(false);
+                    if ui.put(sound_slider_rect, volume_slider).changed() {
+                        let v = player::kits::Volume::f64_volume(-volume);
+                        self.audio_volume.set(v);
                     }
                 }
             }

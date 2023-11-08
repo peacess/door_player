@@ -3,7 +3,7 @@ use std::sync::atomic::Ordering;
 use cpal::SupportedStreamConfig;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-use crate::player::RingBufferConsumer;
+use crate::player::kits::RingBufferConsumer;
 
 #[derive(Clone)]
 pub struct AudioPlayFrame {

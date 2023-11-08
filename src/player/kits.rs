@@ -69,6 +69,41 @@ impl FfmpegKit {
     }
 }
 
+pub struct Volume {}
+
+impl Volume {
+    pub const MAX_F64_VOLUME: f64 = 1.0;
+    pub const MIN_F64_VOLUME: f64 = 0.0;
+    pub const DEFAULT_F64_VOLUME: f64 = 0.5;
+
+    pub const MAX_INT_VOLUME: i64 = 1000;
+
+    pub const MIN_INT_VOLUME: i64 = 0;
+    pub const VOLUME_STEP: i64 = 5;
+    pub fn plus_volume(volume: f64) -> f64 {
+        let mut v = (volume * Self::MAX_INT_VOLUME as f64) as i64 + Self::VOLUME_STEP;
+        if v > Self::MAX_INT_VOLUME {
+            v = Self::MAX_INT_VOLUME;
+        }
+        v as f64 / Self::MAX_INT_VOLUME as f64
+    }
+
+    pub fn minus_volume(volume: f64) -> f64 {
+        let mut v = (volume * Self::MAX_INT_VOLUME as f64) as i64 - Self::VOLUME_STEP;
+        if v < Self::MIN_INT_VOLUME {
+            v = Self::MIN_INT_VOLUME;
+        }
+        v as f64 / Self::MAX_INT_VOLUME as f64
+    }
+
+    pub fn int_volume(volume: f64) -> i64 {
+        (volume * Self::MAX_INT_VOLUME as f64) as i64
+    }
+    pub fn f64_volume(int_volume: i64) -> f64 {
+        int_volume as f64 / Self::MAX_INT_VOLUME as f64
+    }
+}
+
 
 #[cfg(test)]
 mod test {
