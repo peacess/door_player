@@ -387,12 +387,36 @@ impl Player {
         };
         let _ = std::thread::Builder::new().name("audio decode".to_string()).spawn(move || {
             'RUN: loop {
-                if PlayerState::Stopped == play_ctrl.player_state.get() {
-                    log::info!("audio decode exit");
-                    break 'RUN;
+                match play_ctrl.player_state.get() {
+                    PlayerState::Stopped => {
+                        log::info!("audio decode exit");
+                        break 'RUN;
+                    }
+                    PlayerState::EndOfFile => {}
+                    PlayerState::Seeking(_) => {}
+                    PlayerState::Paused => {
+                        spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                        continue 'RUN;
+                    }
+                    PlayerState::Playing => {}
+                    PlayerState::Restarting => {}
                 }
 
                 loop {
+                    match play_ctrl.player_state.get() {
+                        PlayerState::Stopped => {
+                            log::info!("audio decode exit");
+                            break 'RUN;
+                        }
+                        PlayerState::EndOfFile => {}
+                        PlayerState::Seeking(_) => {}
+                        PlayerState::Paused => {
+                            spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                            continue 'RUN;
+                        }
+                        PlayerState::Playing => {}
+                        PlayerState::Restarting => {}
+                    }
                     let mut frame_old = ffmpeg::frame::Audio::empty();
                     match audio_decoder.receive_frame(&mut frame_old) {
                         Ok(_) => {
@@ -436,15 +460,12 @@ impl Player {
                                 }
                                 Ok(_) => {}
                             }
+                            spin_sleep::sleep(PLAY_MIN_INTERVAL);
                         }
                         Err(e) => {
                             log::debug!("{}", e);
                             break;
                         }
-                    }
-                    if PlayerState::Stopped == play_ctrl.player_state.get() {
-                        log::info!("audio decode exit");
-                        break 'RUN;
                     }
                 }
 
@@ -530,10 +551,21 @@ impl Player {
         let height = video_decoder.height() as usize;
 
         let _ = std::thread::Builder::new().name("video decode".to_string()).spawn(move || 'RUN: loop {
-            if PlayerState::Stopped == play_ctrl.player_state.get() {
-                log::info!("video decode exit");
-                break;
+            match play_ctrl.player_state.get() {
+                PlayerState::Stopped => {
+                    log::info!("video decode exit");
+                    break 'RUN;
+                }
+                PlayerState::EndOfFile => {}
+                PlayerState::Seeking(_) => {}
+                PlayerState::Paused => {
+                    spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                    continue 'RUN;
+                }
+                PlayerState::Playing => {}
+                PlayerState::Restarting => {}
             }
+
             match video_packet_receiver.try_recv() {
                 Err(e) => {
                     log::error!("{}", e);
@@ -548,9 +580,26 @@ impl Player {
                     }
                     // spin_sleep::sleep(std::time::Duration::from_millis(2));
                 }
-                Ok(None) | Ok(Some(None)) => {}
+                Ok(None) | Ok(Some(None)) => {
+                    spin_sleep::sleep(std::time::Duration::from_millis(2));
+                    continue;
+                }
             }
             loop {
+                match play_ctrl.player_state.get() {
+                    PlayerState::Stopped => {
+                        log::info!("video decode exit");
+                        break 'RUN;
+                    }
+                    PlayerState::EndOfFile => {}
+                    PlayerState::Seeking(_) => {}
+                    PlayerState::Paused => {
+                        spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                        continue 'RUN;
+                    }
+                    PlayerState::Playing => {}
+                    PlayerState::Restarting => {}
+                }
                 let mut v_frame = ffmpeg::frame::Video::empty();
                 if let Err(e) = video_decoder.receive_frame(&mut v_frame) {
                     log::debug!("{}", e);
@@ -618,6 +667,20 @@ impl Player {
                     log::info!("video play exit");
                     break;
                 }
+                match play_ctrl.player_state.get() {
+                    PlayerState::Stopped => {
+                        log::info!("video play exit");
+                        break;
+                    }
+                    PlayerState::EndOfFile => {}
+                    PlayerState::Seeking(_) => {}
+                    PlayerState::Paused => {
+                        spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                        continue;
+                    }
+                    PlayerState::Playing => {}
+                    PlayerState::Restarting => {}
+                }
 
                 if let CommandGo::Frame(t) = play_ctrl.command_go.get() {
                     play_ctrl.command_go.set(CommandGo::None);
@@ -658,8 +721,6 @@ impl Player {
                         continue;
                     }
                 }
-
-                // spin_sleep::sleep(PLAY_MIN_INTERVAL);
             }
 
             Ok::<(), anyhow::Error>(())
@@ -1143,14 +1204,14 @@ impl Player {
                     self.set_mute(!mute);
                 }
                 let mut sound_slider_rect = sound_icon_rect;
-                sound_slider_rect.set_bottom(sound_icon_rect.top() - 10.0);
+                sound_slider_rect.set_bottom(sound_icon_rect.bottom());
                 sound_slider_rect.set_top(sound_slider_rect.top() - 124.0);
 
                 let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_rect);
-                if seekbar_hovered || sound_slider_hovered {
+                if sound_slider_hovered {
                     let mut volume = -player::kits::Volume::int_volume(self.audio_volume.get());
                     let mut volume_slider = egui::Slider::new(&mut volume, -player::kits::Volume::MAX_INT_VOLUME..=0).vertical();
-                    volume_slider = volume_slider.smart_aim(false).show_value(false);
+                    volume_slider = volume_slider.show_value(false);
                     if ui.put(sound_slider_rect, volume_slider).changed() {
                         let v = player::kits::Volume::f64_volume(-volume);
                         self.audio_volume.set(v);
