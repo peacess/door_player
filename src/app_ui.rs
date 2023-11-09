@@ -38,13 +38,20 @@ impl AppUi {
             ui.input(|k| {
                 for e in &k.events {
                     match e {
-                        Event::Key { key, pressed: true, .. } => {
+                        Event::Key { key, pressed: true, modifiers,.. } => {
                             match key {
                                 Key::ArrowLeft => {
                                     player.go_back_ui(&self.command_go_ui);
                                 }
                                 Key::ArrowRight => {
                                     player.go_ahead_ui(&self.command_go_ui);
+                                }
+                                Key::Tab => {
+                                    if modifiers.ctrl {
+                                        player.tab_seek_ms = player.elapsed_ms();
+                                    }else {
+                                        player.tab_seek();
+                                    }
                                 }
                                 Key::ArrowUp | Key::PlusEquals => {
                                     let v = player::kits::Volume::plus_volume(player.audio_volume.get());
@@ -230,8 +237,12 @@ impl AppUi {
             //create a new texture, do not use the old one
             let texture_handle = Player::default_texture_handle(ctx);
             match Player::new(ctx, texture_handle, self.command_ui.clone(), &self.media_path) {
-                Ok(p) => {
-                    self.player = Some(p);
+                Ok(mut new_player) => {
+                    if let Some(old_player) = &self.player {
+                        new_player.tab_seek_ms = old_player.tab_seek_ms;
+                        new_player.audio_volume.set(old_player.audio_volume.get());
+                    }
+                    self.player = Some(new_player);
                 }
                 Err(e) => {
                     log::error!("{}", e);
@@ -253,7 +264,7 @@ impl Default for AppUi {
             media_path: String::default(),
             no_scale: false,
             command_ui: Shared::new(CommandUi::None),
-            command_go_ui: Shared::new(CommandGo::Packet(1)),
+            command_go_ui: Shared::new(CommandGo::GoMs(5000)),
         }
     }
 }
@@ -432,6 +443,18 @@ impl eframe::App for AppUi {
                         ui.horizontal(|ui| {
                             if ui.button("Go").clicked() {
                                 player.go_ahead_ui(&self.command_go_ui);
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            if ui.button("Tab seek: ").clicked() {
+                                player.tab_seek();
+                            }
+                            let mut str_amount = format!("{}", player.tab_seek_ms);
+                            if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
+                                if let Ok(v) = str_amount.parse() {
+                                    player.tab_seek_ms = v;
+                                }
                             }
                         });
 

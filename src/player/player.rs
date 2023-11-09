@@ -27,6 +27,8 @@ pub struct Player {
     pub height: u32,
 
     last_seek_ms: Option<i64>,
+    //按一次tab 前进的时间，默认为0
+    pub tab_seek_ms: i64,
 
     /// mouse move ts, compute if show the status bar
     pub mouth_move_ts: i64,
@@ -170,6 +172,7 @@ impl Player {
                 width: 0,
                 height: 0,
                 last_seek_ms: None,
+                tab_seek_ms: 0,
                 mouth_move_ts: Utc::now().timestamp_millis(),
                 command_ui,
             }
@@ -838,6 +841,7 @@ impl Player {
                         }
                     }
                     CommandGo::GoMs(ms) => {
+                        log::info!("go ms: {}", ms);
                         play_ctrl.command_go.set(CommandGo::None);
                         let mut diff = play_ctrl.elapsed_ms() + ms;
                         if diff < 0 {
@@ -1242,6 +1246,13 @@ impl Player {
     }
     pub fn seek(&mut self, frame_number: i64) {
         self.command_go.set(CommandGo::Seek(frame_number));
+    }
+
+    pub fn tab_seek(&mut self) {
+        if self.tab_seek_ms > 0 {
+            let seek_pos = (self.tab_seek_ms * self.duration) / self.duration_ms;
+            self.seek(seek_pos);
+        }
     }
     // seek in play ctrl
     pub fn reset(&mut self) {
