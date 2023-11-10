@@ -38,7 +38,7 @@ impl AppUi {
             ui.input(|k| {
                 for e in &k.events {
                     match e {
-                        Event::Key { key, pressed: true, modifiers,.. } => {
+                        Event::Key { key, pressed: true, modifiers, .. } => {
                             match key {
                                 Key::ArrowLeft => {
                                     player.go_back_ui(&self.command_go_ui);
@@ -49,7 +49,7 @@ impl AppUi {
                                 Key::Tab => {
                                     if modifiers.ctrl {
                                         player.tab_seek_ms = player.elapsed_ms();
-                                    }else {
+                                    } else {
                                         player.tab_seek();
                                     }
                                 }

@@ -14,8 +14,10 @@ Features:
    * Double Click/F1 -> toggle Full Screen  
    * → Arrow Left  -> Fast forward packets/frames/milliseconds  
    * ← Arrow Right -> Fast rewind milliseconds  
-   * ↑ Arrow Up  -> Volume up (planning)  
-   * ↓ Arrow Down -> Volume down (planning)  
+   * ↑ Arrow Up/+  -> Volume +   
+   * ↓ Arrow Down/- -> Volume -  
+   * Tab -> Tab Seek
+   * Ctrl + Tab -> save current position for "Tab"
 7. Other
 
 # build
@@ -29,7 +31,6 @@ sudo apt install libass-dev libavdevice-dev
 clone the ffmpeg  
 cd ffmpeg  
 [//]: # (// --enable-libass --enable-avfilter : add filter subtitles  )
-[//]: # (// ./configure --enable-gpl --enable-cross-compile --target-os=windows --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*)
 ./configure --enable-gpl --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*
 make -j16 && sudo make install && sudo make uninstall  
 
