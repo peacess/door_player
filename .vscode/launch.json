@@ -1,0 +1,45 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "door_player",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=door_player",
+                    "--package=door_player"
+                ],
+                "filter": {
+                    "name": "door_player",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/bin"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "unit tests door_player",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=door_player",
+                    "--package=door_player"
+                ],
+                "filter": {
+                    "name": "door_player",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}/bin"
+        }
+    ]
+}
