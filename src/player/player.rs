@@ -660,13 +660,8 @@ impl Player {
                                     Some(t) => t,
                                     None => {
                                         unsafe {
-                                            match (*frame.as_ptr()).pkt_pts {
-                                                ffmpeg::ffi::AV_NOPTS_VALUE => {
-                                                    match (*frame.as_ptr()).pkt_dts {
-                                                        ffmpeg::ffi::AV_NOPTS_VALUE => 0,
-                                                        t => t,
-                                                    }
-                                                },
+                                            match (*frame.as_ptr()).pkt_dts {
+                                                ffmpeg::ffi::AV_NOPTS_VALUE => 0,
                                                 t => t,
                                             }
                                         }
