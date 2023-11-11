@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 use std::io::Write;
 
 use env_logger::Env;
