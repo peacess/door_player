@@ -26,8 +26,17 @@ Features:
 ## Ubuntu
 sudo apt install libass-dev libavdevice-dev
 
-# ffmpeg(just record) 
+## window
 
+```shell
+   git clone https://github.com/microsoft/vcpkg.git
+   cd  vcpkg
+   .\bootstrap-vcpkg.bat
+   .\vcpkg.exe install ffmpeg
+   set FFMPEG_DIR=C:/lang/vcpkg/installed/x64-windows
+```
+
+# ffmpeg(just record) 
 clone the ffmpeg  
 cd ffmpeg  
 [//]: # (// --enable-libass --enable-avfilter : add filter subtitles  )

@@ -280,7 +280,10 @@ impl AppUi {
     pub fn run_app() {
         let mut ops = eframe::NativeOptions::default();
         ops.centered = true;
-        ops.renderer = eframe::Renderer::Wgpu;
+        #[cfg(target_os = "windows")]
+        {
+            ops.renderer = eframe::Renderer::Wgpu;
+        }
         let re = eframe::run_native("Door Player", ops,
                                     Box::new(|_| Box::new(AppUi::default())), );
         if let Err(e) = re {

@@ -4,7 +4,6 @@ pub extern crate ffmpeg;
 pub extern crate ffmpeg_next as ffmpeg;
 // ffmpeg_next, ffmpeg_the_third,rusty_ffmpeg;
 
-
 pub use app_ui::AppUi;
 
 mod app_ui;
