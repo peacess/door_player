@@ -438,24 +438,34 @@ impl Player {
                             } else {
                                 frame_resample.plane(0)
                             };
-                            let packet_frame = frame_old.packet();
                             let v = play_ctrl.audio_volume.get() as f32;
                             let samples: Vec<f32> = re_samples_ref.iter().map(|s| s * v).collect();
+                            let (duration, pts) = {
+                                let packet_frame = frame_old.packet();
+                                let pts = match frame_old.pts(){
+                                    None => {
+                                        log::info!("Frame pts is none");
+                                        0
+                                    }
+                                    Some(t) => t
+                                };
+                                (packet_frame.duration, pts)
+                            };
                             #[cfg(not(feature = "meh_ffmpeg"))]
                                 let audio_frame = AudioPlayFrame {
                                 samples,
                                 channels: frame_resample.channels(),
                                 sample_rate: frame_resample.rate(),
-                                pts: packet_frame.pts,
-                                duration: packet_frame.duration,
+                                pts,
+                                duration,
                             };
                             #[cfg(feature = "meh_ffmpeg")]
                                 let audio_frame = AudioPlayFrame {
                                 samples,
                                 channels: frame_resample.channels(),
                                 sample_rate: frame_resample.sample_rate(),
-                                pts: packet_frame.pts,
-                                duration: packet_frame.duration,
+                                pts,
+                                duration,
                             };
                             match audio_play_sender.send(audio_frame) {
                                 Err(e) => {
@@ -640,13 +650,40 @@ impl Player {
                         }
                         Ok(t) => t,
                     };
-                    let packet_frame = frame.packet();
+
+                    let (duration, pts) = {
+                        let packet_frame = frame.packet();
+                        let pts = match frame.pts(){
+                            None => {
+                                log::debug!("Frame pts is none");
+                                match frame.timestamp(){
+                                    Some(t) => t,
+                                    None => {
+                                        unsafe {
+                                            match (*frame.as_ptr()).pkt_pts {
+                                                ffmpeg::ffi::AV_NOPTS_VALUE => {
+                                                    match (*frame.as_ptr()).pkt_dts {
+                                                        ffmpeg::ffi::AV_NOPTS_VALUE => 0,
+                                                        t => t,
+                                                    }
+                                                },
+                                                t => t,
+                                            }
+                                        }
+                                    }
+                                }
+
+                            }
+                            Some(t) => t
+                        };
+                        (packet_frame.duration, pts)
+                    };
 
                     let video_frame = VideoPlayFrame {
                         width,
                         height,
-                        pts: packet_frame.pts,
-                        duration: packet_frame.duration,
+                        pts,
+                        duration,
                         color_image,
                     };
                     match video_play_sender.send(video_frame) {
