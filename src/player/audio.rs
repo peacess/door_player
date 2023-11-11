@@ -53,7 +53,17 @@ pub struct AudioDevice {
 impl AudioDevice {
     pub fn new<T: cpal::SizedSample + Send + 'static>(mut consumer: RingBufferConsumer<T>) -> Result<Self, anyhow::Error> {
         let device = cpal::default_host().default_output_device().ok_or(ffmpeg::Error::OptionNotFound)?;
-        let config = device.default_input_config()?;
+        let config = {
+            match device.default_input_config() {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("{}", e);
+                    let mut conf =device.supported_output_configs()?;
+                    let conf = conf.next().expect("").with_max_sample_rate();
+                    conf
+                }
+            }
+        };
         let stream = device.build_output_stream(&config.clone().into(), move |data: &mut [T], cbinfo| {
             Self::write_audio(data, &mut consumer, cbinfo);
         }, |e| {
