@@ -218,7 +218,7 @@ impl PlayCtrl {
     }
 
     pub fn audio_config(&self) -> cpal::SupportedStreamConfig {
-        self.audio_dev.stream_input_config()
+        self.audio_dev.output_config()
     }
     pub fn play_audio(&mut self, mut frame: AudioPlayFrame) -> Result<(), anyhow::Error> {
         let mut producer = self.producer.lock();

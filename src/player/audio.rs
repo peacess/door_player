@@ -46,25 +46,31 @@ impl std::fmt::Debug for AudioPlayFrame {
 
 pub struct AudioDevice {
     stream: cpal::Stream,
-    config: SupportedStreamConfig,
+    output_config: SupportedStreamConfig,
     mute: std::sync::atomic::AtomicBool,
 }
 
 impl AudioDevice {
     pub fn new<T: cpal::SizedSample + Send + 'static>(mut consumer: RingBufferConsumer<T>) -> Result<Self, anyhow::Error> {
         let device = cpal::default_host().default_output_device().ok_or(ffmpeg::Error::OptionNotFound)?;
-        let config = {
-            match device.default_input_config() {
+        let output_config = {
+            match device.default_output_config() {
                 Ok(c) => c,
                 Err(e) => {
                     log::error!("{}", e);
-                    let mut conf =device.supported_output_configs()?;
-                    let conf = conf.next().expect("").with_max_sample_rate();
-                    conf
+                    // can not get the default config, then get the first supported config
+                    let mut configs = device.supported_output_configs()?;
+                    match configs.next() {
+                        None => {
+                            log::error!("No supported output config");
+                            return Err(ffmpeg::Error::OptionNotFound.into());
+                        }
+                        Some(c) => c.with_max_sample_rate()
+                    }
                 }
             }
         };
-        let stream = device.build_output_stream(&config.clone().into(), move |data: &mut [T], cbinfo| {
+        let stream = device.build_output_stream(&output_config.clone().into(), move |data: &mut [T], cbinfo| {
             Self::write_audio(data, &mut consumer, cbinfo);
         }, |e| {
             log::error!("{}", e);
@@ -72,13 +78,13 @@ impl AudioDevice {
 
         Ok(Self {
             stream,
-            config,
+            output_config: output_config,
             mute: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
-    pub fn stream_input_config(&self) -> SupportedStreamConfig {
-        self.config.clone()
+    pub fn output_config(&self) -> SupportedStreamConfig {
+        self.output_config.clone()
     }
 
     pub fn set_mute(&self, mute: bool) {

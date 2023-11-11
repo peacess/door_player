@@ -442,7 +442,7 @@ impl Player {
                             let samples: Vec<f32> = re_samples_ref.iter().map(|s| s * v).collect();
                             let (duration, pts) = {
                                 let packet_frame = frame_old.packet();
-                                let pts = match frame_old.pts(){
+                                let pts = match frame_old.pts() {
                                     None => {
                                         log::info!("Frame pts is none");
                                         0
@@ -653,10 +653,10 @@ impl Player {
 
                     let (duration, pts) = {
                         let packet_frame = frame.packet();
-                        let pts = match frame.pts(){
+                        let pts = match frame.pts() {
                             None => {
                                 log::debug!("Frame pts is none");
-                                match frame.timestamp(){
+                                match frame.timestamp() {
                                     Some(t) => t,
                                     None => {
                                         unsafe {
@@ -667,7 +667,6 @@ impl Player {
                                         }
                                     }
                                 }
-
                             }
                             Some(t) => t
                         };
