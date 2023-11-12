@@ -1,6 +1,6 @@
 [package]
 name = "door_player"
-version = "0.2.9"
+version = "0.3.0"
 edition = "2021"
 authors = ["Andy <peacess@163.com>"]
 description = "Door Player, Cross by ffmpeg and egui"
@@ -49,3 +49,6 @@ path="src/lib.rs"
 [[bin]]
 name="door_player"
 path="src/main.rs"
+
+[build-dependencies]
+reqwest = { version = "0.11.22", features = ["blocking"] }

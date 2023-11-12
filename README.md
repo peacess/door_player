@@ -43,6 +43,14 @@ cd ffmpeg
 ./configure --enable-gpl --enable-static --enable-libass --enable-avfilter --enable-libx264 --enable-pic --enable-ffplay --enable-decoder=pcm*
 make -j16 && sudo make install && sudo make uninstall  
 
+# font
+   the default fonts in egui is not support chinese, so get the free open fonts from web when builds  
+get the download url from github url:  
+   github url:  https://github.com/wordshub/free-font/blob/master/assets/font/%E4%B8%AD%E6%96%87/%E6%96%87%E6%B3%89%E9%A9%BF%E7%B3%BB%E5%88%97/%E6%96%87%E6%B3%89%E9%A9%BF%E5%BE%AE%E7%B1%B3%E9%BB%91.ttc  
+   rule:  https://[github_user_id].github.io/[repo_name]/  , no master branch  
+   download url: https://wordshub.github.io/free-font/assets/font/%E4%B8%AD%E6%96%87/%E6%96%87%E6%B3%89%E9%A9%BF%E7%B3%BB%E5%88%97/%E6%96%87%E6%B3%89%E9%A9%BF%E6%AD%A3%E9%BB%91.ttc  
+   see: https://github.com/orgs/community/discussions/42655#discussioncomment-5669289  
+
 # see
 [egui-video(player)](https://github.com/n00kii/egui-video)   First version of door player is base on this project   
 [small-player](https://github.com/imxood/small-player)   
