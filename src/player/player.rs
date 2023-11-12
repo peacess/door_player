@@ -106,7 +106,7 @@ impl Player {
 
                     let mut thread_conf = audio_context.threading();
                     log::info!("audio threads default : {:?}", &thread_conf);
-                    thread_conf.count = 1;
+                    thread_conf.count = 2;
                     thread_conf.kind = ffmpeg::threading::Type::Slice;
                     log::info!("audio threads new : {:?}", &thread_conf);
                     audio_context.set_threading(thread_conf);
@@ -131,7 +131,6 @@ impl Player {
 
         // 字幕
         let graph = {
-            // let mut subtitle_input = ffmpeg::format::input(&path::Path::new(file))?;
             match &video_decoder {
                 None => None,
                 Some(video_decoder) => {
@@ -185,7 +184,13 @@ impl Player {
         let video_packet_sender = match video_decoder {
             None => None,
             Some(video_decoder) => {
-                let (video_packet_sender, video_packet_receiver) = kanal::bounded(VIDEO_PACKET_QUEUE_SIZE);
+                let (video_packet_sender, video_packet_receiver) = {
+                    if VIDEO_PACKET_QUEUE_SIZE < 1 {
+                        kanal::unbounded()
+                    } else {
+                        kanal::bounded(VIDEO_PACKET_QUEUE_SIZE)
+                    }
+                };
                 let (video_play_sender, video_play_receiver) = kanal::bounded(VIDEO_FRAME_QUEUE_SIZE);
                 {
                     player.video_packet_receiver = Some(video_packet_receiver.clone());
@@ -499,14 +504,20 @@ impl Player {
                             Ok(_) => {}
                         }
                     }
-                    Ok(None) | Ok(Some(None)) => {
-                        // match audio_decoder.send_eof() {
-                        //     Err(e) => {
-                        //         log::error!("{}", e);
-                        //     }
-                        //     Ok(_) => {}
-                        // }
-                        // audio_decoder.flush();
+                    Ok(None) => {
+                        spin_sleep::sleep(std::time::Duration::from_millis(2));
+                        continue 'RUN;
+                    }
+                    Ok(Some(None)) => {
+                        //receive all frame
+                        let mut temp = ffmpeg::frame::Audio::empty();
+                        for _ in 0..20 {
+                            if let Err(_) = audio_decoder.receive_frame(&mut temp) {
+                                break;
+                            }
+                        }
+                        spin_sleep::sleep(std::time::Duration::from_millis(2));
+                        continue 'RUN;
                     }
                 }
             }
@@ -593,7 +604,18 @@ impl Player {
                     }
                     // spin_sleep::sleep(std::time::Duration::from_millis(2));
                 }
-                Ok(None) | Ok(Some(None)) => {
+                Ok(None) => {
+                    spin_sleep::sleep(std::time::Duration::from_millis(2));
+                    continue;
+                }
+                Ok(Some(None)) => {
+                    //receive all frame
+                    let mut temp = ffmpeg::frame::Video::empty();
+                    for _ in 0..20 {
+                        if let Err(_) = video_decoder.receive_frame(&mut temp) {
+                            break;
+                        }
+                    }
                     spin_sleep::sleep(std::time::Duration::from_millis(2));
                     continue;
                 }
@@ -890,7 +912,7 @@ impl Player {
                             }
                         }
 
-                        play_ctrl.clean_receiver();
+                        play_ctrl.seek_clean();
                         if let Some(a) = &audio_packet_sender {
                             let _ = a.send(None);
                         }
@@ -915,7 +937,7 @@ impl Player {
                         if let Err(e) = input.seek(seek_pos, ..seek_pos) {
                             log::error!("{}", e);
                         }
-                        play_ctrl.clean_receiver();
+                        play_ctrl.seek_clean();
                         if let Some(a) = &audio_packet_sender {
                             let _ = a.send(None);
                         }
@@ -1000,6 +1022,7 @@ impl Player {
             }
         });
     }
+
     pub fn packed<T: ffmpeg::frame::audio::Sample>(frame: &ffmpeg::frame::Audio) -> &[T] {
         if !frame.is_packed() {
             panic!("data is not packed");

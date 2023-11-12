@@ -190,7 +190,7 @@ impl PlayCtrl {
         self.packet_finished.load(Ordering::Relaxed)
     }
 
-    pub fn clean_receiver(&self) {
+    pub fn seek_clean(&self) {
         if let Some(receiver) = &self.video_packet_receiver {
             let size = receiver.len();
             for _ in 0..size {
@@ -215,6 +215,7 @@ impl PlayCtrl {
                 let _ = receiver.try_recv();
             }
         }
+        //clear the video and audio frame
     }
 
     pub fn audio_config(&self) -> cpal::SupportedStreamConfig {
