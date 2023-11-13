@@ -256,8 +256,9 @@ unsafe impl Send for AppUi {}
 
 unsafe impl Sync for AppUi {}
 
-impl Default for AppUi {
-    fn default() -> Self {
+impl AppUi {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self::set_font(&cc.egui_ctx);
         Self {
             collapse: true,
             player: None,
@@ -285,7 +286,7 @@ impl AppUi {
             ops.renderer = eframe::Renderer::Wgpu;
         }
         let re = eframe::run_native("Door Player", ops,
-                                    Box::new(|_| Box::new(AppUi::default())), );
+                                    Box::new(|cc| Box::new(AppUi::new(cc))), );
         if let Err(e) = re {
             log::error!("{}", e);
         }
@@ -336,7 +337,6 @@ impl eframe::App for AppUi {
         // } else {
         //     ctx.set_debug_on_hover(false);
         // }
-        AppUi::set_font(ctx);
 
         self.handle_command_ui(_frame);
 
