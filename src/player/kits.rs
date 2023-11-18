@@ -1,5 +1,7 @@
+use std::{fs, path};
 use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use ffmpeg::{Rational, Rescale};
@@ -101,6 +103,46 @@ impl Volume {
     }
     pub fn f64_volume(int_volume: i64) -> f64 {
         int_volume as f64 / Self::MAX_INT_VOLUME as f64
+    }
+}
+
+pub struct SubTitle {}
+
+impl SubTitle {
+    /// sub title extension: srt,ass,ssa,sub,smi
+    pub fn sub_files(file: &str) -> Vec<PathBuf> {
+        let mut subs = Vec::with_capacity(6);
+        let path_file = path::PathBuf::from(file);
+        if path_file.file_name().is_none() {
+            return subs;
+        }
+        match fs::read_dir(path_file.parent().unwrap()) {
+            Err(e) => {
+                log::error!("{}",e);
+                return subs;
+            }
+            Ok(read_dir) => {
+                let no_ex = path_file.file_stem().expect("").to_str().expect("").to_string();
+                let file_name = path_file.file_name().expect("");
+                let exs = ["srt", "ass", "ssa", "sub", "smi"]; // array is better than mam/set
+                for f in read_dir {
+                    if let Ok(ff) = f {
+                        let n = ff.file_name().to_str().expect("").to_string();
+                        if file_name != ff.file_name() && n.starts_with(&no_ex) {
+                            if let Some(ex_name) = ff.path().extension() {
+                                let t = ex_name.to_str().expect("");
+                                if exs.contains(&t) {
+                                    subs.push(ff.path());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        subs.sort();
+        return subs;
     }
 }
 

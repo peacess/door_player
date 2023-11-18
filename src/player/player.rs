@@ -13,7 +13,7 @@ use kanal::{Receiver, Sender};
 
 use crate::kits::Shared;
 use crate::player;
-use crate::player::{CommandGo, CommandUi, MAX_DIFF_MOVE_MOUSE, PlayerState, SubtitlePlayFrame};
+use crate::player::{CommandGo, CommandUi, kits, MAX_DIFF_MOVE_MOUSE, PlayerState, SubtitlePlayFrame};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::play_ctrl::PlayCtrl;
@@ -139,8 +139,20 @@ impl Player {
                     #[cfg(feature = "meh_ffmpeg")]
                         let video_time_base = video_input.stream(video_index).expect("").time_base().expect("");
 
-                    if video_input.streams().best(ffmpeg::media::Type::Subtitle).is_some() {
-                        match Self::graph(&video_decoder, file, video_time_base) {
+                    let sub_title_file = {
+                        if video_input.streams().best(ffmpeg::media::Type::Subtitle).is_some() {
+                            file.clone()
+                        } else {
+                            if let Some(f) = kits::SubTitle::sub_files(file).first() {
+                                f.to_str().expect("").to_string()
+                            } else {
+                                "".to_string()
+                            }
+                        }
+                    };
+
+                    if !sub_title_file.is_empty() {
+                        match Self::graph(&video_decoder, &sub_title_file, video_time_base) {
                             Err(e) => {
                                 log::error!("{}", e);
                                 None
