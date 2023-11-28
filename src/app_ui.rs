@@ -1,8 +1,7 @@
 use std::{fs, path};
 use std::path::PathBuf;
 
-use eframe::Frame;
-use egui::{Context, DroppedFile, Event, Key, PointerButton, Ui};
+use egui::{Context, DroppedFile, Event, Key, PointerButton, Ui, ViewportCommand};
 
 use crate::kits::Shared;
 use crate::player;
@@ -88,18 +87,20 @@ impl AppUi {
             });
         }
 
-        ui.input(|k| {
+        let (next,pre) = ui.input(|k| {
+            let mut next = false;
+            let mut pre = false;
             for e in &k.events {
                 match e {
                     Event::Key { key, pressed: true, .. } => {
                         match key {
                             Key::PageDown => {
-                                let file = AppUi::next_file(&self.media_path);
-                                self.open_file(ctx, file.into());
+                                next = true;
+                                break;
                             }
                             Key::PageUp => {
-                                let file = AppUi::pre_file(&self.media_path);
-                                self.open_file(ctx, file.into());
+                                pre = true;
+                                break;
                             }
                             _ => {}
                         }
@@ -107,22 +108,36 @@ impl AppUi {
                     _ => {}
                 }
             }
+            (next, pre)
         });
+        if next {
+            let file = AppUi::next_file(&self.media_path);
+            self.open_file(ctx, file.into());
+        }else if pre {
+            let file = AppUi::pre_file(&self.media_path);
+            self.open_file(ctx, file.into());
+        }
     }
 
     pub(crate) fn handle_key_no_player(&mut self, ui: &mut Ui, ctx: &egui::Context) {
-        ui.input(|k| {
+        let is_open = ui.input(|k| {
+            let mut is_open = false;
             for e in &k.events {
                 match e {
                     Event::Key { key: Key::Space, pressed: true, .. } | Event::PointerButton { button: PointerButton::Primary, pressed: true, .. } => {
-                        if let Some(buf) = Self::select_file() {
-                            self.open_file(ctx, buf);
-                        }
+                        is_open = true;
+                        break;
                     }
                     _ => {}
                 }
             }
+            is_open
         });
+        if is_open {
+            if let Some(buf) = Self::select_file() {
+                self.open_file(ctx, buf);
+            }
+        }
     }
 
     pub(crate) fn next_file(file: &str) -> String {
@@ -195,34 +210,43 @@ impl AppUi {
         return String::default();
     }
 
-    fn handle_command_ui(&mut self, _frame: &mut Frame) {
-        {
-            let cmd = self.command_ui.get();
-            self.command_ui.set(CommandUi::None);
-
+    fn handle_command_ui(&mut self, ctx: &egui::Context) {
+        let cmd = self.command_ui.get();
+        self.command_ui.set(CommandUi::None);
+        if cmd == CommandUi::None {
+            return;
+        }
+        ctx.input(|c| {
+            let view = c.viewport();
             match cmd {
                 CommandUi::None => {}
                 CommandUi::FullscreenToggle => {
-                    let b = _frame.info().window_info.fullscreen;
-                    _frame.set_fullscreen(!b);
+                    let b = view.fullscreen.unwrap_or_default();
+                    ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!b));
                     if !b {
                         self.collapse = true;
                     }
                 }
                 CommandUi::FullscreenTrue => {
-                    _frame.set_fullscreen(true);
+                    ctx.send_viewport_cmd(ViewportCommand::Fullscreen(true));
                     self.collapse = true;
                 }
-                CommandUi::FullscreenFalse => _frame.set_fullscreen(true),
-                CommandUi::MaximizedToggle => _frame.set_maximized(!_frame.info().window_info.maximized),
-                CommandUi::MaximizedTrue => _frame.set_maximized(true),
-                CommandUi::MaximizedFalse => _frame.set_maximized(false),
-                CommandUi::MinimizedToggle => _frame.set_minimized(!_frame.info().window_info.minimized),
-                CommandUi::MinimizedTrue => _frame.set_minimized(true),
-                CommandUi::MinimizedFalse => _frame.set_minimized(false),
-                CommandUi::Close => { _frame.close(); }
+                CommandUi::FullscreenFalse => ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false)),
+                CommandUi::MaximizedToggle => {
+                    let b = view.maximized.unwrap_or_default();
+                    ctx.send_viewport_cmd(ViewportCommand::Maximized(!b));
+                }
+                CommandUi::MaximizedTrue => ctx.send_viewport_cmd(ViewportCommand::Maximized(true)),
+                CommandUi::MaximizedFalse => ctx.send_viewport_cmd(ViewportCommand::Maximized(false)),
+                CommandUi::MinimizedToggle => {
+                    let b = view.minimized.unwrap_or_default();
+                    ctx.send_viewport_cmd(ViewportCommand::Minimized(!b));
+                }
+                CommandUi::MinimizedTrue => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
+                CommandUi::MinimizedFalse => ctx.send_viewport_cmd(ViewportCommand::Minimized(false)),
+                CommandUi::Close => ctx.send_viewport_cmd(ViewportCommand::Close),
             }
-        }
+        });
     }
 
     fn select_file() -> Option<PathBuf> {
@@ -281,10 +305,7 @@ impl AppUi {
     pub fn run_app() {
         let mut ops = eframe::NativeOptions::default();
         ops.centered = true;
-        #[cfg(target_os = "windows")]
-        {
-            ops.renderer = eframe::Renderer::Wgpu;
-        }
+        ops.renderer = eframe::Renderer::Wgpu;
         let re = eframe::run_native("Door Player", ops,
                                     Box::new(|cc| Box::new(AppUi::new(cc))), );
         if let Err(e) = re {
@@ -338,7 +359,9 @@ impl eframe::App for AppUi {
         //     ctx.set_debug_on_hover(false);
         // }
 
-        self.handle_command_ui(_frame);
+        // ctx.send_viewport_cmd()
+        // let v = ctx.input(|t| t.viewport());
+        self.handle_command_ui(ctx);
 
         let frame = egui::Frame::default();
         if !self.collapse {
@@ -491,15 +514,18 @@ impl eframe::App for AppUi {
         egui::CentralPanel::default().frame(frame)
             .show(ctx, |ui| {
                 {
-                    ui.input(|state| {
-                        if !state.raw.dropped_files.is_empty() {
-                            match state.raw.dropped_files.first() {
-                                Some(DroppedFile { path: Some(first), .. }) => {
-                                    self.open_file(ctx, first.clone())
-                                }
-                                _ => {}
+                    let file = ui.input(|s|{
+                        match s.raw.dropped_files.first(){
+                            Some(DroppedFile { path: Some(first), .. }) => {
+                               Some(first.clone())
                             }
+                            _ => None
                         }
+                    });
+                    if let Some(f) = file {
+                        self.open_file(ctx, f);
+                    }
+                    ui.input(|state| {
                         for e in &state.events {
                             match e {
                                 Event::Key { key: Key::Escape, pressed: true, .. } => {
