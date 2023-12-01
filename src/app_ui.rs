@@ -216,37 +216,37 @@ impl AppUi {
         if cmd == CommandUi::None {
             return;
         }
-        ctx.input(|c| {
-            let view = c.viewport();
-            match cmd {
-                CommandUi::None => {}
-                CommandUi::FullscreenToggle => {
-                    let b = view.fullscreen.unwrap_or_default();
-                    ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!b));
-                    if !b {
-                        self.collapse = true;
-                    }
-                }
-                CommandUi::FullscreenTrue => {
-                    ctx.send_viewport_cmd(ViewportCommand::Fullscreen(true));
+        let view = ctx.input(|c| {
+            c.viewport().clone()
+        });
+        match cmd {
+            CommandUi::None => {}
+            CommandUi::FullscreenToggle => {
+                let b = view.fullscreen.unwrap_or_default();
+                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!b));
+                if !b {
                     self.collapse = true;
                 }
-                CommandUi::FullscreenFalse => ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false)),
-                CommandUi::MaximizedToggle => {
-                    let b = view.maximized.unwrap_or_default();
-                    ctx.send_viewport_cmd(ViewportCommand::Maximized(!b));
-                }
-                CommandUi::MaximizedTrue => ctx.send_viewport_cmd(ViewportCommand::Maximized(true)),
-                CommandUi::MaximizedFalse => ctx.send_viewport_cmd(ViewportCommand::Maximized(false)),
-                CommandUi::MinimizedToggle => {
-                    let b = view.minimized.unwrap_or_default();
-                    ctx.send_viewport_cmd(ViewportCommand::Minimized(!b));
-                }
-                CommandUi::MinimizedTrue => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
-                CommandUi::MinimizedFalse => ctx.send_viewport_cmd(ViewportCommand::Minimized(false)),
-                CommandUi::Close => ctx.send_viewport_cmd(ViewportCommand::Close),
             }
-        });
+            CommandUi::FullscreenTrue => {
+                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(true));
+                self.collapse = true;
+            }
+            CommandUi::FullscreenFalse => ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false)),
+            CommandUi::MaximizedToggle => {
+                let b = view.maximized.unwrap_or_default();
+                ctx.send_viewport_cmd(ViewportCommand::Maximized(!b));
+            }
+            CommandUi::MaximizedTrue => ctx.send_viewport_cmd(ViewportCommand::Maximized(true)),
+            CommandUi::MaximizedFalse => ctx.send_viewport_cmd(ViewportCommand::Maximized(false)),
+            CommandUi::MinimizedToggle => {
+                let b = view.minimized.unwrap_or_default();
+                ctx.send_viewport_cmd(ViewportCommand::Minimized(!b));
+            }
+            CommandUi::MinimizedTrue => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
+            CommandUi::MinimizedFalse => ctx.send_viewport_cmd(ViewportCommand::Minimized(false)),
+            CommandUi::Close => ctx.send_viewport_cmd(ViewportCommand::Close),
+        }
     }
 
     fn select_file() -> Option<PathBuf> {
@@ -358,9 +358,6 @@ impl eframe::App for AppUi {
         // } else {
         //     ctx.set_debug_on_hover(false);
         // }
-
-        // ctx.send_viewport_cmd()
-        // let v = ctx.input(|t| t.viewport());
         self.handle_command_ui(ctx);
 
         let frame = egui::Frame::default();
