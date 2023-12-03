@@ -65,8 +65,8 @@ impl Player {
                         video_context.set_parameters(video_stream.parameters());
                         let mut thread_conf = video_context.threading();
                         log::info!("video threads default : {:?}", &thread_conf);
-                        thread_conf.count = 2;
-                        thread_conf.kind = ffmpeg::threading::Type::Slice;
+                        thread_conf.count = 3;
+                        thread_conf.kind = ffmpeg::threading::Type::Frame;
                         log::info!("video threads new : {:?}", &thread_conf);
                         video_context.set_threading(thread_conf);
                     }
@@ -106,8 +106,8 @@ impl Player {
 
                     let mut thread_conf = audio_context.threading();
                     log::info!("audio threads default : {:?}", &thread_conf);
-                    thread_conf.count = 2;
-                    thread_conf.kind = ffmpeg::threading::Type::Slice;
+                    thread_conf.count = 3;
+                    thread_conf.kind = ffmpeg::threading::Type::Frame;
                     log::info!("audio threads new : {:?}", &thread_conf);
                     audio_context.set_threading(thread_conf);
                 }
