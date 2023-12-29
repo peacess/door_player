@@ -39,6 +39,9 @@ impl AppUi {
                     match e {
                         Event::Key { key, pressed: true, modifiers, .. } => {
                             match key {
+                                Key::Escape => {
+                                    self.command_ui.set(CommandUi::Close);
+                                }
                                 Key::ArrowLeft => {
                                     player.go_back_ui(&self.command_go_ui);
                                 }
@@ -113,9 +116,19 @@ impl AppUi {
         if next {
             let file = AppUi::next_file(&self.media_path);
             self.open_file(ctx, file.into());
+            // if self.player.is_some() {
+            //     ctx.memory_mut(|c|{
+            //         c.request_focus(ui.id());
+            //     });
+            // }
         }else if pre {
             let file = AppUi::pre_file(&self.media_path);
             self.open_file(ctx, file.into());
+            // if self.player.is_some() {
+            //     ctx.memory_mut(|c|{
+            //         c.request_focus(ui.id());
+            //     });
+            // }
         }
     }
 
@@ -127,6 +140,9 @@ impl AppUi {
                     Event::Key { key: Key::Space, pressed: true, .. } | Event::PointerButton { button: PointerButton::Primary, pressed: true, .. } => {
                         is_open = true;
                         break;
+                    }
+                    Event::Key { key: Key::Escape, pressed: true, .. } => {
+                        self.command_ui.set(CommandUi::Close);
                     }
                     _ => {}
                 }
@@ -522,17 +538,6 @@ impl eframe::App for AppUi {
                     if let Some(f) = file {
                         self.open_file(ctx, f);
                     }
-                    ui.input(|state| {
-                        for e in &state.events {
-                            match e {
-                                Event::Key { key: Key::Escape, pressed: true, .. } => {
-                                    self.command_ui.set(CommandUi::Close);
-                                    break;
-                                }
-                                _ => {}
-                            }
-                        }
-                    });
                 }
                 if self.player.is_some() {
                     self.handle_key_player(ui, ctx);

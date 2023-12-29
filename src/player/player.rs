@@ -1,6 +1,6 @@
+use std::{fs, path};
 use std::default::Default;
 use std::ops::{Deref, DerefMut};
-use std::path;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
@@ -48,6 +48,22 @@ impl Player {
             let _ = print_meda_info(&mut format_input);
         }
 
+        let thread_count = {
+            let l = match fs::metadata(file) {
+                Err(_) => 1,
+                Ok(t) => t.len()
+            };
+            if l < 400 * 1024 * 1024 {
+                1
+            } else if l < 1024 * 1024 * 1024 {
+                2
+            } else if l < 6 * 1024 * 1024 * 1024 {
+                4
+            } else {
+                6
+            }
+        };
+
         let video_input = ffmpeg::format::input(&path::Path::new(file))?;
         // 获取视频解码器
         let (video_index, video_decoder, video_stream_time_base) = {
@@ -65,7 +81,7 @@ impl Player {
                         video_context.set_parameters(video_stream.parameters());
                         let mut thread_conf = video_context.threading();
                         log::info!("video threads default : {:?}", &thread_conf);
-                        thread_conf.count = 3;
+                        thread_conf.count = thread_count;
                         thread_conf.kind = ffmpeg::threading::Type::Frame;
                         log::info!("video threads new : {:?}", &thread_conf);
                         video_context.set_threading(thread_conf);
@@ -106,7 +122,12 @@ impl Player {
 
                     let mut thread_conf = audio_context.threading();
                     log::info!("audio threads default : {:?}", &thread_conf);
-                    thread_conf.count = 3;
+                    if thread_count > 4 {
+                        thread_conf.count = 4;
+                    } else {
+                        thread_conf.count = thread_count;
+                    }
+
                     thread_conf.kind = ffmpeg::threading::Type::Frame;
                     log::info!("audio threads new : {:?}", &thread_conf);
                     audio_context.set_threading(thread_conf);
