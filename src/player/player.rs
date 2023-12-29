@@ -57,7 +57,7 @@ impl Player {
                 1
             } else if l < 1024 * 1024 * 1024 {
                 2
-            } else if l < 6 * 1024 * 1024 * 1024 {
+            } else if l < 3 * 1024 * 1024 * 1024 {
                 4
             } else {
                 6
