@@ -1,7 +1,7 @@
 use std::{fs, path};
 use std::path::PathBuf;
 
-use egui::{Context, DroppedFile, Event, Key, PointerButton, Ui, ViewportCommand};
+use egui::{DroppedFile, Event, Frame, Key, PointerButton, Ui, ViewportCommand};
 
 use crate::kits::Shared;
 use crate::player;
@@ -13,6 +13,7 @@ pub struct AppUi {
 
     media_path: String,
     no_scale: bool,
+    auto_play_next: bool,
 
     command_ui: Shared<CommandUi>,
     /// ui界面使用
@@ -90,7 +91,7 @@ impl AppUi {
             });
         }
 
-        let (next,pre) = ui.input(|k| {
+        let (next, pre) = ui.input(|k| {
             let mut next = false;
             let mut pre = false;
             for e in &k.events {
@@ -121,7 +122,7 @@ impl AppUi {
             //         c.request_focus(ui.id());
             //     });
             // }
-        }else if pre {
+        } else if pre {
             let file = AppUi::pre_file(&self.media_path);
             self.open_file(ctx, file.into());
             // if self.player.is_some() {
@@ -230,6 +231,19 @@ impl AppUi {
         let cmd = self.command_ui.get();
         self.command_ui.set(CommandUi::None);
         if cmd == CommandUi::None {
+            //check play finish
+            if self.auto_play_next {
+                if let Some(p) = &self.player {
+                    if p.play_ctrl.video_finished() {
+                        let file = AppUi::next_file(&self.media_path);
+                        if self.open_file(ctx, file.into()) {
+                            if let Some(p) = &mut self.player {
+                                p.start();
+                            }
+                        }
+                    }
+                }
+            }
             return;
         }
         let view = ctx.input(|c| {
@@ -271,7 +285,7 @@ impl AppUi {
         rfd::FileDialog::new().add_filter("videos", &names).pick_file()
     }
 
-    fn open_file(&mut self, ctx: &Context, buf: PathBuf) {
+    fn open_file(&mut self, ctx: &egui::Context, buf: PathBuf) -> bool {
         self.media_path = buf.to_string_lossy().to_string();
         if !self.media_path.is_empty() {
             //create a new texture, do not use the old one
@@ -283,100 +297,19 @@ impl AppUi {
                         new_player.audio_volume.set(old_player.audio_volume.get());
                     }
                     self.player = Some(new_player);
+                    true
                 }
                 Err(e) => {
                     log::error!("{}", e);
+                    false
                 }
             }
-        }
-    }
-}
-
-unsafe impl Send for AppUi {}
-
-unsafe impl Sync for AppUi {}
-
-impl AppUi {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        Self::set_font(&cc.egui_ctx);
-        Self {
-            collapse: true,
-            player: None,
-            media_path: String::default(),
-            no_scale: false,
-            command_ui: Shared::new(CommandUi::None),
-            command_go_ui: Shared::new(CommandGo::GoMs(5000)),
-        }
-    }
-}
-
-impl AppUi {
-    fn collapse_str(&self) -> &'static str {
-        match self.collapse {
-            true => "<",
-            false => ">"
+        } else {
+            false
         }
     }
 
-    pub fn run_app() {
-        let mut ops = eframe::NativeOptions::default();
-        ops.centered = true;
-        ops.renderer = eframe::Renderer::Wgpu;
-        let re = eframe::run_native("Door Player", ops,
-                                    Box::new(|cc| Box::new(AppUi::new(cc))), );
-        if let Err(e) = re {
-            log::error!("{}", e);
-        }
-    }
-
-    fn compute_player_size(vedio_size: egui::Vec2, ui_size: egui::Vec2) -> egui::Vec2 {
-        let mut re = egui::Vec2::splat(0.0);
-        if ui_size.x > 0.0 && ui_size.y > 0.0 && vedio_size.x > 0.0 && vedio_size.y > 0.0 {
-            let x_ = ui_size.x / vedio_size.x;
-            let y_ = ui_size.y / vedio_size.y;
-            if x_ > y_ {
-                re.x = vedio_size.x * y_;
-                re.y = ui_size.y;
-            } else if x_ == y_ {
-                re.x = ui_size.x;
-                re.y = ui_size.y;
-            } else {
-                re.x = ui_size.x;
-                re.y = vedio_size.y * x_;
-            }
-        }
-        return re;
-    }
-    /// set the font to support chinese
-    fn set_font(ctx: &egui::Context) {
-        static mut LOAD: bool = false;
-        if unsafe { !LOAD } {
-            let mut fonts = egui::FontDefinitions::default();
-            // let font_name = "OPPOSans".to_string();
-            // fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(include_bytes!("../assets/fonts/OPPOSans-B.ttf")));
-            let font_name = "文泉驿正黑".to_string();
-            let bs = include_bytes!("../assets/fonts/文泉驿正黑.ttc");
-            if !bs.is_empty() {
-                fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(bs));
-                fonts.families.get_mut(&egui::FontFamily::Proportional).expect("").insert(0, font_name.clone());
-                fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
-                ctx.set_fonts(fonts);
-            }
-            unsafe { LOAD = true; }
-        }
-    }
-}
-
-impl eframe::App for AppUi {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // if cfg!(debug_assertions) {
-        //     ctx.set_debug_on_hover(true);
-        // } else {
-        //     ctx.set_debug_on_hover(false);
-        // }
-        self.handle_command_ui(ctx);
-
-        let frame = egui::Frame::default();
+    fn right_panel(&mut self, ctx: &egui::Context, frame: Frame) {
         if !self.collapse {
             egui::SidePanel::right("right_panel").frame(frame.clone())
                 .min_width(0.0)
@@ -518,19 +451,112 @@ impl eframe::App for AppUi {
                                 player.audio_volume.set(v);
                             }
                         });
+
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut self.auto_play_next, "Auto Play Next");
+                        });
                     }
 
                     ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
                 });
         }
+    }
+}
 
+unsafe impl Send for AppUi {}
+
+unsafe impl Sync for AppUi {}
+
+impl AppUi {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self::set_font(&cc.egui_ctx);
+        Self {
+            collapse: true,
+            player: None,
+            media_path: String::default(),
+            no_scale: false,
+            auto_play_next: false,
+            command_ui: Shared::new(CommandUi::None),
+            command_go_ui: Shared::new(CommandGo::GoMs(5000)),
+        }
+    }
+}
+
+impl AppUi {
+    fn collapse_str(&self) -> &'static str {
+        match self.collapse {
+            true => "<",
+            false => ">"
+        }
+    }
+
+    pub fn run_app() {
+        let mut ops = eframe::NativeOptions::default();
+        ops.centered = true;
+        ops.renderer = eframe::Renderer::Wgpu;
+        let re = eframe::run_native("Door Player", ops,
+                                    Box::new(|cc| Box::new(AppUi::new(cc))), );
+        if let Err(e) = re {
+            log::error!("{}", e);
+        }
+    }
+
+    fn compute_player_size(vedio_size: egui::Vec2, ui_size: egui::Vec2) -> egui::Vec2 {
+        let mut re = egui::Vec2::splat(0.0);
+        if ui_size.x > 0.0 && ui_size.y > 0.0 && vedio_size.x > 0.0 && vedio_size.y > 0.0 {
+            let x_ = ui_size.x / vedio_size.x;
+            let y_ = ui_size.y / vedio_size.y;
+            if x_ > y_ {
+                re.x = vedio_size.x * y_;
+                re.y = ui_size.y;
+            } else if x_ == y_ {
+                re.x = ui_size.x;
+                re.y = ui_size.y;
+            } else {
+                re.x = ui_size.x;
+                re.y = vedio_size.y * x_;
+            }
+        }
+        return re;
+    }
+    /// set the font to support chinese
+    fn set_font(ctx: &egui::Context) {
+        static mut LOAD: bool = false;
+        if unsafe { !LOAD } {
+            let mut fonts = egui::FontDefinitions::default();
+            // let font_name = "OPPOSans".to_string();
+            // fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(include_bytes!("../assets/fonts/OPPOSans-B.ttf")));
+            let font_name = "文泉驿正黑".to_string();
+            let bs = include_bytes!("../assets/fonts/文泉驿正黑.ttc");
+            if !bs.is_empty() {
+                fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(bs));
+                fonts.families.get_mut(&egui::FontFamily::Proportional).expect("").insert(0, font_name.clone());
+                fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
+                ctx.set_fonts(fonts);
+            }
+            unsafe { LOAD = true; }
+        }
+    }
+}
+
+impl eframe::App for AppUi {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // if cfg!(debug_assertions) {
+        //     ctx.set_debug_on_hover(true);
+        // } else {
+        //     ctx.set_debug_on_hover(false);
+        // }
+        self.handle_command_ui(ctx);
+
+        let frame = egui::Frame::default();
+        self.right_panel(ctx, frame);
         egui::CentralPanel::default().frame(frame)
             .show(ctx, |ui| {
                 {
-                    let file = ui.input(|s|{
-                        match s.raw.dropped_files.first(){
+                    let file = ui.input(|s| {
+                        match s.raw.dropped_files.first() {
                             Some(DroppedFile { path: Some(first), .. }) => {
-                               Some(first.clone())
+                                Some(first.clone())
                             }
                             _ => None
                         }
