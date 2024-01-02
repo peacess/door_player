@@ -5,8 +5,8 @@
 Features:  
 1. Play mp4/mkv video file  
 2. Embedded subtitle  
-3. Fast forward by the Packet(not support rewind)  
-4. Fast forward by the Frame(not support rewind)  
+3. Fast Forward by the Packet(not support rewind)  
+4. Fast Forward by the Frame(not support rewind)  
 5. Next/Pre file  
 6. Keyboard  
    * Space/Click-left -> toggle play or pause  
@@ -18,13 +18,15 @@ Features:
    * ↓ Arrow Down/- -> Volume -  
    * Tab -> Tab Seek
    * Ctrl + Tab -> save current position for "Tab"
-7. Other
+7. Autoplay next file
+8. Decode threads by file size
+9. Other
 
 # build
 [ffmpeg](https://github.com/zmwangx/rust-ffmpeg/wiki/Notes-on-building)  
 
 ## Ubuntu
-sudo apt install libass-dev libavdevice-dev
+sudo apt install libass-dev libavdevice-dev ffmpeg
 
 ## window
 

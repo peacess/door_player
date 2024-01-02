@@ -1,6 +1,6 @@
 [package]
 name = "door_player"
-version = "0.3.3"
+version = "0.3.4"
 edition = "2021"
 authors = ["Andy <peacess@163.com>"]
 description = "Door Player, Cross by ffmpeg and egui"
