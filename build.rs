@@ -29,12 +29,10 @@ fn main() {
         match reqwest::blocking::get(url) {
             Err(e) => {
                 println!("can not download font file:  {}", e);
-                return;
             }
             Ok(mut response) => {
                 if let Err(e) = response.copy_to(&mut file) {
                     println!("can not download font file:  {}", e);
-                    return;
                 }
             }
         }

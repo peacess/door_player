@@ -17,13 +17,13 @@ egui = "0.24"
 eframe = { version = "0.24", features = ["wgpu"]}
 
 rfd = "0.12"
-ffmpeg-next = {version = "6.1", default-features = true}
+ffmpeg-next = {version = "6.1.1", default-features = true}
 #ffmpeg-the-third = {version = "1.2.2+ffmpeg-6.0"}
 #rusty_ffmpeg = "0.13.1+ffmpeg.6.0"
 #ffmpeg = { version = "0.6.0", git = "https://github.com/meh/rust-ffmpeg.git" }
 
 cpal = "0.15"
-spin_sleep = "1.1"
+spin_sleep = "1.2"
 
 ringbuf = "0.3"
 rust_kits = {version = "0.1",git = "https://github.com/peacess/rust.git"}

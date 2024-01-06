@@ -78,7 +78,7 @@ impl AudioDevice {
 
         Ok(Self {
             stream,
-            output_config: output_config,
+            output_config,
             mute: std::sync::atomic::AtomicBool::new(false),
         })
     }
@@ -100,10 +100,8 @@ impl AudioDevice {
             if let Err(e) = self.stream.pause() {
                 log::error!("{}", e);
             }
-        } else {
-            if let Err(e) = self.stream.play() {
-                log::error!("{}", e);
-            }
+        } else if let Err(e) = self.stream.play() {
+            log::error!("{}", e);
         }
     }
 
@@ -115,7 +113,7 @@ impl AudioDevice {
     }
 
     fn write_audio<T: cpal::Sample>(data: &mut [T], consumer: &mut RingBufferConsumer<T>, _: &cpal::OutputCallbackInfo) {
-        if consumer.len() > 0 {
+        if !consumer.is_empty() {
             let done = consumer.pop_slice(data);
             if done < data.len() {
                 let s = &mut data[done..];

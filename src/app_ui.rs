@@ -1,4 +1,5 @@
 use std::{fs, path};
+use std::default::Default;
 use std::path::PathBuf;
 
 use egui::{DroppedFile, Event, Frame, Key, PointerButton, Ui, ViewportCommand};
@@ -37,55 +38,52 @@ impl AppUi {
 
             ui.input(|k| {
                 for e in &k.events {
-                    match e {
-                        Event::Key { key, pressed: true, modifiers, .. } => {
-                            match key {
-                                Key::Escape => {
-                                    self.command_ui.set(CommandUi::Close);
-                                }
-                                Key::ArrowLeft => {
-                                    player.go_back_ui(&self.command_go_ui);
-                                }
-                                Key::ArrowRight => {
-                                    player.go_ahead_ui(&self.command_go_ui);
-                                }
-                                Key::Tab => {
-                                    if modifiers.ctrl {
-                                        player.tab_seek_ms = player.elapsed_ms();
-                                    } else {
-                                        player.tab_seek();
-                                    }
-                                }
-                                Key::ArrowUp | Key::PlusEquals => {
-                                    let v = player::kits::Volume::plus_volume(player.audio_volume.get());
-                                    player.audio_volume.set(v);
-                                }
-                                Key::ArrowDown | Key::Minus => {
-                                    let v = player::kits::Volume::minus_volume(player.audio_volume.get());
-                                    player.audio_volume.set(v);
-                                }
-                                Key::Space => {
-                                    let state = player.player_state.get();
-                                    match state {
-                                        PlayerState::Stopped => {
-                                            player.start();
-                                        }
-                                        PlayerState::Paused => {
-                                            player.resume();
-                                        }
-                                        PlayerState::Playing => {
-                                            player.pause();
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                Key::F1 => {
-                                    self.command_ui.set(CommandUi::FullscreenToggle);
-                                }
-                                _ => {}
+                    if let Event::Key { key, pressed: true, modifiers, .. } = e {
+                        match key {
+                            Key::Escape => {
+                                self.command_ui.set(CommandUi::Close);
                             }
+                            Key::ArrowLeft => {
+                                player.go_back_ui(&self.command_go_ui);
+                            }
+                            Key::ArrowRight => {
+                                player.go_ahead_ui(&self.command_go_ui);
+                            }
+                            Key::Tab => {
+                                if modifiers.ctrl {
+                                    player.tab_seek_ms = player.elapsed_ms();
+                                } else {
+                                    player.tab_seek();
+                                }
+                            }
+                            Key::ArrowUp | Key::PlusEquals => {
+                                let v = player::kits::Volume::plus_volume(player.audio_volume.get());
+                                player.audio_volume.set(v);
+                            }
+                            Key::ArrowDown | Key::Minus => {
+                                let v = player::kits::Volume::minus_volume(player.audio_volume.get());
+                                player.audio_volume.set(v);
+                            }
+                            Key::Space => {
+                                let state = player.player_state.get();
+                                match state {
+                                    PlayerState::Stopped => {
+                                        player.start();
+                                    }
+                                    PlayerState::Paused => {
+                                        player.resume();
+                                    }
+                                    PlayerState::Playing => {
+                                        player.pause();
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            Key::F1 => {
+                                self.command_ui.set(CommandUi::FullscreenToggle);
+                            }
+                            _ => {}
                         }
-                        _ => {}
                     }
                 }
             });
@@ -95,21 +93,18 @@ impl AppUi {
             let mut next = false;
             let mut pre = false;
             for e in &k.events {
-                match e {
-                    Event::Key { key, pressed: true, .. } => {
-                        match key {
-                            Key::PageDown => {
-                                next = true;
-                                break;
-                            }
-                            Key::PageUp => {
-                                pre = true;
-                                break;
-                            }
-                            _ => {}
+                if let Event::Key { key, pressed: true, .. } = e {
+                    match key {
+                        Key::PageDown => {
+                            next = true;
+                            break;
                         }
+                        Key::PageUp => {
+                            pre = true;
+                            break;
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
             (next, pre)
@@ -169,10 +164,8 @@ impl AppUi {
                 return String::default();
             }
             Ok(read_dir) => {
-                for f in read_dir {
-                    if let Ok(ff) = f {
-                        files.push(ff.file_name());
-                    }
+                for f in read_dir.flatten() {
+                    files.push(f.file_name());
                 }
             }
         }
@@ -189,7 +182,7 @@ impl AppUi {
             let f = files.get(i);
             return path_file.parent().unwrap().join(f.unwrap()).to_string_lossy().to_string();
         }
-        return String::default();
+        String::default()
     }
 
     pub(crate) fn pre_file(file: &str) -> String {
@@ -204,10 +197,8 @@ impl AppUi {
                 return String::default();
             }
             Ok(read_dir) => {
-                for f in read_dir {
-                    if let Ok(ff) = f {
-                        files.push(ff.file_name());
-                    }
+                for f in read_dir.flatten() {
+                    files.push(f.file_name());
                 }
             }
         }
@@ -224,7 +215,7 @@ impl AppUi {
             let f = files.get(i);
             return path_file.parent().unwrap().join(f.unwrap()).to_string_lossy().to_string();
         }
-        return String::default();
+        String::default()
     }
 
     fn handle_command_ui(&mut self, ctx: &egui::Context) {
@@ -311,7 +302,7 @@ impl AppUi {
 
     fn right_panel(&mut self, ctx: &egui::Context, frame: Frame) {
         if !self.collapse {
-            egui::SidePanel::right("right_panel").frame(frame.clone())
+            egui::SidePanel::right("right_panel").frame(frame)
                 .min_width(0.0)
                 .resizable(true)
                 .show(ctx, |ui| {
@@ -491,9 +482,11 @@ impl AppUi {
     }
 
     pub fn run_app() {
-        let mut ops = eframe::NativeOptions::default();
-        ops.centered = true;
-        ops.renderer = eframe::Renderer::Wgpu;
+        let ops = eframe::NativeOptions {
+            centered: true,
+            renderer: eframe::Renderer::Wgpu,
+            ..Default::default()
+        };
         let re = eframe::run_native("Door Player", ops,
                                     Box::new(|cc| Box::new(AppUi::new(cc))), );
         if let Err(e) = re {
@@ -517,7 +510,7 @@ impl AppUi {
                 re.y = vedio_size.y * x_;
             }
         }
-        return re;
+        re
     }
     /// set the font to support chinese
     fn set_font(ctx: &egui::Context) {

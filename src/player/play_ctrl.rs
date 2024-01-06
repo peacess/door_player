@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use bytemuck::NoUninit;
-use eframe::epaint::TextureHandle;
 use parking_lot::Mutex;
 use ringbuf::SharedRb;
 
@@ -109,7 +108,7 @@ impl PlayCtrl {
         duration: i64,
         producer: ringbuf::Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
         audio_dev: Arc<AudioDevice>,
-        texture_handle: TextureHandle,
+        texture_handle: egui::TextureHandle,
         video_stream_time_base: Option<ffmpeg::Rational>, audio_stream_time_base: Option<ffmpeg::Rational>,
     ) -> Self {
         let demux_finished = Arc::new(AtomicBool::new(false));
@@ -120,7 +119,7 @@ impl PlayCtrl {
                 None => 0.0,
                 Some(t) => f64::from(t)
             };
-            Arc::new(Clock::new(f64::from(q2d)))
+            Arc::new(Clock::new(q2d))
         };
         let audio_clock = {
             let q2d = match audio_stream_time_base {
@@ -229,7 +228,7 @@ impl PlayCtrl {
             std::thread::sleep(Duration::from_micros(1));
         }
         // log::info!("play audio out: {}", frame.samples.len());
-        let _ = self.update_audio_clock(frame.pts, frame.duration);
+        self.update_audio_clock(frame.pts, frame.duration);
         if self.audio_dev.get_mute() {
             frame.samples.as_mut_slice().fill(0.0);
         }
@@ -264,7 +263,7 @@ impl PlayCtrl {
     fn update_audio_clock(&self, pts: i64, duration: i64) {
         self.audio_clock.update(pts, duration);
         if let Some(time_base) = &self.audio_stream_time_base {
-            let t = timestamp_to_millisecond(pts, time_base.clone());
+            let t = timestamp_to_millisecond(pts, *time_base);
             self.audio_elapsed_ms.set(t);
             if self.video_stream_time_base.is_none() {
                 //if no video stream, we should not update video elapsed time
@@ -277,7 +276,7 @@ impl PlayCtrl {
     fn update_video_clock(&self, pts: i64, duration: i64) -> f64 {
         self.video_clock.update(pts, duration);
         if let Some(time_base) = &self.video_stream_time_base {
-            let t = timestamp_to_millisecond(pts, time_base.clone());
+            let t = timestamp_to_millisecond(pts, *time_base);
             self.video_elapsed_ms.set(t);
         }
         self.compute_video_delay()

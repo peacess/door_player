@@ -26,8 +26,13 @@ Features:
 [ffmpeg](https://github.com/zmwangx/rust-ffmpeg/wiki/Notes-on-building)  
 
 ## Ubuntu
-sudo apt install libass-dev libavdevice-dev ffmpeg
+sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg6  
+sudo apt update  
+sudo apt install libass-dev libavdevice-dev ffmpeg  
 
+note: if you want to downgrade to 6.0.
+sudo apt install ppa-purge && sudo ppa-purge ppa:ubuntuhandbook1/ffmpeg6
+sudo apt install ffmpeg
 ## window
 
 ```shell
@@ -38,7 +43,7 @@ sudo apt install libass-dev libavdevice-dev ffmpeg
    set FFMPEG_DIR=C:/lang/vcpkg/installed/x64-windows
 ```
 
-# ffmpeg(just record) 
+# ffmpeg code(just record) 
 clone the ffmpeg  
 cd ffmpeg  
 [//]: # (// --enable-libass --enable-avfilter : add filter subtitles  )

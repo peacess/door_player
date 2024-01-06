@@ -39,7 +39,7 @@ impl FfmpegKit {
                 }
                 if !(*input_format).name.is_null() {
                     let name = CStr::from_ptr((*input_format).name).to_str().expect("");
-                    let ns: Vec<_> = name.split(",").map(|s| s.to_string()).collect();
+                    let ns: Vec<_> = name.split(',').map(|s| s.to_string()).collect();
                     names.extend(ns);
                 }
                 // {
@@ -64,7 +64,7 @@ impl FfmpegKit {
         if !names.contains(&"mkv".to_string()) {
             names.push("mkv".to_string());
         }
-        names = HashSet::<String>::from_iter(names.into_iter()).into_iter().collect::<Vec<String>>();
+        names = HashSet::<String>::from_iter(names).into_iter().collect::<Vec<String>>();
         names.sort();
         log::info!("all file type: {:?}", names);
         names
@@ -125,15 +125,13 @@ impl SubTitle {
                 let no_ex = path_file.file_stem().expect("").to_str().expect("").to_string();
                 let file_name = path_file.file_name().expect("");
                 let exs = ["srt", "ass", "ssa", "sub", "smi"]; // array is better than mam/set
-                for f in read_dir {
-                    if let Ok(ff) = f {
-                        let n = ff.file_name().to_str().expect("").to_string();
-                        if file_name != ff.file_name() && n.starts_with(&no_ex) {
-                            if let Some(ex_name) = ff.path().extension() {
-                                let t = ex_name.to_str().expect("");
-                                if exs.contains(&t) {
-                                    subs.push(ff.path());
-                                }
+                for ff in read_dir.flatten() {
+                    let n = ff.file_name().to_str().expect("").to_string();
+                    if file_name != ff.file_name() && n.starts_with(&no_ex) {
+                        if let Some(ex_name) = ff.path().extension() {
+                            let t = ex_name.to_str().expect("");
+                            if exs.contains(&t) {
+                                subs.push(ff.path());
                             }
                         }
                     }
@@ -142,7 +140,7 @@ impl SubTitle {
         }
 
         subs.sort();
-        return subs;
+        subs
     }
 }
 

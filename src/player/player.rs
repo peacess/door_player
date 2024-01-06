@@ -45,7 +45,7 @@ impl Player {
                 Ok(f) => texture_handle.set(Self::frame_to_color_image(&f)?, egui::TextureOptions::LINEAR),
                 Err(e) => log::error!("{}", e),
             }
-            let _ = print_meda_info(&mut format_input);
+            let _ = print_meda_info(&format_input);
         }
 
         let thread_count = {
@@ -59,7 +59,7 @@ impl Player {
                 2
             } else if l < 3 * 1024 * 1024 * 1024 {
                 3
-            } else if l < 5 * 1024 * 1024 * 1024{
+            } else if l < 5 * 1024 * 1024 * 1024 {
                 4
             } else {
                 6
@@ -165,17 +165,15 @@ impl Player {
                     let sub_title_file = {
                         if video_input.streams().best(ffmpeg::media::Type::Subtitle).is_some() {
                             file.clone()
+                        } else if let Some(f) = kits::SubTitle::sub_files(file).first() {
+                            f.to_str().expect("").to_string()
                         } else {
-                            if let Some(f) = kits::SubTitle::sub_files(file).first() {
-                                f.to_str().expect("").to_string()
-                            } else {
-                                "".to_string()
-                            }
+                            "".to_string()
                         }
                     };
 
                     if !sub_title_file.is_empty() {
-                        match Self::graph(&video_decoder, &sub_title_file, video_time_base) {
+                        match Self::graph(video_decoder, &sub_title_file, video_time_base) {
                             Err(e) => {
                                 log::error!("{}", e);
                                 None
@@ -275,8 +273,7 @@ impl Player {
 
     pub fn default_texture_handle(ctx: &egui::Context) -> egui::TextureHandle {
         let img = egui::ColorImage::new([124, 124], Color32::TRANSPARENT);
-        let texture_handle = ctx.load_texture("video_stream_default", img, egui::TextureOptions::LINEAR);
-        texture_handle
+        ctx.load_texture("video_stream_default", img, egui::TextureOptions::LINEAR)
     }
 
     pub fn frame_to_color_image(frame: &ffmpeg::frame::Video) -> Result<egui::ColorImage, ffmpeg::Error> {
@@ -284,10 +281,10 @@ impl Player {
         let mut context = ffmpeg::software::scaling::Context::get(
             frame.format(),
             frame.width(),
-            frame.height() as u32,
+            frame.height(),
             ffmpeg::format::Pixel::RGB24,
             frame.width(),
-            frame.height() as u32,
+            frame.height(),
             ffmpeg::software::scaling::Flags::BILINEAR,
         )?;
         context.run(frame, &mut rgb_frame)?;
@@ -401,7 +398,7 @@ impl Player {
             match ResamplingContext::get(
                 audio_decoder.format(),
                 audio_decoder.channel_layout(),
-                audio_decoder.rate() as u32,
+                audio_decoder.rate(),
                 to_sample(stream_config.sample_format()),
                 ffmpeg::ChannelLayout::default(stream_config.channels() as i32),//ffmpeg::ChannelLayout::STEREO,
                 stream_config.sample_rate().0,
@@ -507,11 +504,8 @@ impl Player {
                                 pts,
                                 duration,
                             };
-                            match audio_play_sender.send(audio_frame) {
-                                Err(e) => {
-                                    log::error!("{}", e);
-                                }
-                                Ok(_) => {}
+                            if let Err(e) = audio_play_sender.send(audio_frame) {
+                                log::error!("{}", e);
                             }
                             spin_sleep::sleep(PLAY_MIN_INTERVAL);
                         }
@@ -532,11 +526,8 @@ impl Player {
                             log::info!("audio decode exit");
                             break 'RUN;
                         }
-                        match audio_decoder.send_packet(&packet) {
-                            Err(e) => {
-                                log::error!("{}", e);
-                            }
-                            Ok(_) => {}
+                        if let Err(e) = audio_decoder.send_packet(&packet) {
+                            log::error!("{}", e);
                         }
                     }
                     Ok(None) => {
@@ -547,7 +538,7 @@ impl Player {
                         //receive all frame
                         let mut temp = ffmpeg::frame::Audio::empty();
                         for _ in 0..20 {
-                            if let Err(_) = audio_decoder.receive_frame(&mut temp) {
+                            if audio_decoder.receive_frame(&mut temp).is_err() {
                                 break;
                             }
                         }
@@ -589,11 +580,8 @@ impl Player {
                         }
                     }
                     Ok(Some(frame)) => {
-                        match play_ctrl.play_audio(frame) {
-                            Err(e) => {
-                                log::error!("{}", e);
-                            }
-                            Ok(_) => {}
+                        if let Err(e) = play_ctrl.play_audio(frame) {
+                            log::error!("{}", e);
                         }
                         empty_count = 0;
                         continue;
@@ -631,11 +619,8 @@ impl Player {
                     // spin_sleep::sleep(PLAY_MIN_INTERVAL);
                 }
                 Ok(Some(Some(packet))) => {
-                    match video_decoder.send_packet(&packet) {
-                        Err(e) => {
-                            log::error!("{}", e);
-                        }
-                        Ok(_) => {}
+                    if let Err(e) = video_decoder.send_packet(&packet) {
+                        log::error!("{}", e);
                     }
                     // spin_sleep::sleep(std::time::Duration::from_millis(2));
                 }
@@ -647,7 +632,7 @@ impl Player {
                     //receive all frame
                     let mut temp = ffmpeg::frame::Video::empty();
                     for _ in 0..20 {
-                        if let Err(_) = video_decoder.receive_frame(&mut temp) {
+                        if video_decoder.receive_frame(&mut temp).is_err() {
                             break;
                         }
                     }
@@ -710,23 +695,17 @@ impl Player {
 
                     let (duration, pts) = {
                         let packet_frame = frame.packet();
-                        let pts = match frame.pts() {
-                            None => {
-                                log::debug!("Frame pts is none");
-                                match frame.timestamp() {
-                                    Some(t) => t,
-                                    None => {
-                                        unsafe {
-                                            match (*frame.as_ptr()).pkt_dts {
-                                                ffmpeg::ffi::AV_NOPTS_VALUE => 0,
-                                                t => t,
-                                            }
-                                        }
+                        let pts = frame.pts().unwrap_or_else(|| {
+                            log::debug!("Frame pts is none");
+                            frame.timestamp().unwrap_or_else(|| {
+                                unsafe {
+                                    match (*frame.as_ptr()).pkt_dts {
+                                        ffmpeg::ffi::AV_NOPTS_VALUE => 0,
+                                        t => t,
                                     }
                                 }
-                            }
-                            Some(t) => t
-                        };
+                            })
+                        });
                         (packet_frame.duration, pts)
                     };
 
@@ -737,11 +716,8 @@ impl Player {
                         duration,
                         color_image,
                     };
-                    match video_play_sender.send(video_frame) {
-                        Err(e) => {
-                            log::error!("{}", e);
-                        }
-                        Ok(_) => {}
+                    if let Err(e) = video_play_sender.send(video_frame) {
+                        log::error!("{}", e);
                     }
                     // spin_sleep::sleep(std::time::Duration::from_millis(2));
                 }
@@ -876,17 +852,14 @@ impl Player {
                                     if sub_text.is_empty() {
                                         sub_text = line;
                                     } else {
-                                        sub_text.push_str("\n");
+                                        sub_text.push('\n');
                                         sub_text.push_str(&line);
                                     }
                                 }
                                 subtitle_frame.pure_text = sub_text;
 
-                                match subtitle_play_sender.send(subtitle_frame) {
-                                    Err(e) => {
-                                        log::error!("{}", e);
-                                    }
-                                    Ok(_) => {}
+                                if let Err(e) = subtitle_play_sender.send(subtitle_frame) {
+                                    log::error!("{}", e);
                                 }
                             }
                         }
@@ -921,7 +894,7 @@ impl Player {
                     CommandGo::Packet(next_amount) => {
                         play_ctrl.command_go.set(CommandGo::None);
                         for _ in 1..next_amount {
-                            if let None = input.packets().next() {
+                            if input.packets().next().is_none() {
                                 play_ctrl.set_packet_finished(true);
                                 spin_sleep::sleep(PLAY_MIN_INTERVAL);
                                 continue 'PACKETS;
@@ -1081,7 +1054,7 @@ impl Player {
     }
     fn render_ui(&mut self, ui: &mut Ui, image_res: &Response) -> Option<Rect> {
         let hovered = ui.rect_contains_pointer(image_res.rect);
-        let currently_seeking = if let PlayerState::Seeking(_) = self.player_state.get() { true } else { false };
+        let currently_seeking = matches!(self.player_state.get(), PlayerState::Seeking(_));
         let is_stopped = self.player_state.get() == PlayerState::Stopped;
         let is_paused = self.player_state.get() == PlayerState::Paused;
         let seekbar_anim_frac = ui.ctx().animate_bool_with_time(
@@ -1212,8 +1185,10 @@ impl Player {
             } else {
                 "🔇"
             };
-            let mut icon_font_id = FontId::default();
-            icon_font_id.size = 16.;
+            let icon_font_id = FontId{
+                size: 16.0,
+                ..std::default::Default::default()
+            };
 
             let text_y_offset = -7.;
             let sound_icon_offset = vec2(-5., text_y_offset);
@@ -1224,8 +1199,10 @@ impl Player {
 
             let duration_text_offset = vec2(25., text_y_offset);
             let duration_text_pos = full_seek_bar_rect.left_top() + duration_text_offset;
-            let mut duration_text_font_id = FontId::default();
-            duration_text_font_id.size = 14.;
+            let duration_text_font_id = FontId{
+                size: 14.0,
+                ..std::default::Default::default()
+            };
 
             let mut shadow = Shadow::big_light();
             shadow.color = shadow.color.linear_multiply(seekbar_anim_frac);
@@ -1404,10 +1381,7 @@ impl Player {
 
     pub(crate) fn show_seekbar(&self) -> bool {
         let ts = Utc::now().timestamp_millis();
-        if ts - self.mouth_move_ts < MAX_DIFF_MOVE_MOUSE {
-            return true;
-        }
-        return false;
+        ts - self.mouth_move_ts < MAX_DIFF_MOVE_MOUSE
     }
 
     fn duration_frac(&mut self) -> f32 {
