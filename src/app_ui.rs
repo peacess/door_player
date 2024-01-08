@@ -15,6 +15,7 @@ pub struct AppUi {
     media_path: String,
     no_scale: bool,
     auto_play_next: bool,
+    title: String,
 
     command_ui: Shared<CommandUi>,
     /// ui界面使用
@@ -270,6 +271,85 @@ impl AppUi {
         }
     }
 
+    fn title_bar(&mut self, ctx: &egui::Context, frame: Frame) {
+        if ctx.input(|c| c.viewport().fullscreen.unwrap_or_default()) {
+            return;
+        }
+
+        let height = 36.0;
+        egui::TopBottomPanel::top("title_bar_frame").frame(frame).show_separator_line(false).exact_height(height).show(ctx, |ui| {
+            let app_rect = ui.max_rect();
+
+            let title_bar_rect = {
+                let mut rect = app_rect;
+                rect.max.y = rect.min.y + height;
+                rect
+            };
+
+            let painter = ui.painter();
+
+            let title_bar_response = ui.interact(title_bar_rect, egui::Id::new("title_bar"), egui::Sense::click());
+
+            // Paint the title:
+            painter.text(
+                title_bar_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &self.title,
+                egui::FontId::proportional(20.0),
+                ui.style().visuals.text_color(),
+            );
+
+            if title_bar_response.double_clicked() {
+                let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                ui.ctx()
+                    .send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
+            } else if title_bar_response.is_pointer_button_down_on() {
+                ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
+            }
+        });
+    }
+    fn main_frame(&mut self, ctx: &egui::Context, frame: egui::Frame) {
+        self.right_panel(ctx, frame);
+        egui::CentralPanel::default().frame(frame)
+            .show(ctx, |ui| {
+                {
+                    let file = ui.input(|s| {
+                        match s.raw.dropped_files.first() {
+                            Some(DroppedFile { path: Some(first), .. }) => {
+                                Some(first.clone())
+                            }
+                            _ => None
+                        }
+                    });
+                    if let Some(f) = file {
+                        self.open_file(ctx, f);
+                    }
+                }
+                if self.player.is_some() {
+                    self.handle_key_player(ui, ctx);
+                }
+                let none = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+
+                let rect = {
+                    const WIDTH: f32 = 30.0;
+                    let right_center = egui::Pos2 {
+                        x: ui.min_rect().right() - WIDTH / 2.0,
+                        y: ui.min_rect().center().y,
+                    };
+                    egui::Rect::from_center_size(right_center, egui::Vec2::splat(WIDTH))
+                };
+                let button = ui.put(rect, egui::Button::new(self.collapse_str()).small());
+                if button.clicked() {
+                    self.collapse = !self.collapse;
+                }
+
+                if !button.hovered() && self.player.is_none() && none.hovered() {
+                    self.handle_key_no_player(ui, ctx);
+                }
+            });
+    }
+
+
     fn select_file() -> Option<PathBuf> {
         let names = FfmpegKit::demuxers();
         // &["mp4", "mkv", "ogg", "webm", "wmv", "mov", "avi", "mp3", "flv"]
@@ -459,7 +539,7 @@ unsafe impl Send for AppUi {}
 unsafe impl Sync for AppUi {}
 
 impl AppUi {
-    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>, title: &str) -> Self {
         Self::set_font(&cc.egui_ctx);
         Self {
             collapse: true,
@@ -467,13 +547,11 @@ impl AppUi {
             media_path: String::default(),
             no_scale: false,
             auto_play_next: false,
+            title: title.to_owned(),
             command_ui: Shared::new(CommandUi::None),
             command_go_ui: Shared::new(CommandGo::GoMs(5000)),
         }
     }
-}
-
-impl AppUi {
     fn collapse_str(&self) -> &'static str {
         match self.collapse {
             true => "<",
@@ -485,10 +563,15 @@ impl AppUi {
         let ops = eframe::NativeOptions {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
+            viewport: egui::ViewportBuilder {
+                decorations: Some(false),
+                ..Default::default()
+            },
             ..Default::default()
         };
-        let re = eframe::run_native("Door Player", ops,
-                                    Box::new(|cc| Box::new(AppUi::new(cc))), );
+        let title = "Door Player";
+        let re = eframe::run_native(title, ops,
+                                    Box::new(|cc| Box::new(AppUi::new(cc, title))), );
         if let Err(e) = re {
             log::error!("{}", e);
         }
@@ -534,51 +617,9 @@ impl AppUi {
 
 impl eframe::App for AppUi {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // if cfg!(debug_assertions) {
-        //     ctx.set_debug_on_hover(true);
-        // } else {
-        //     ctx.set_debug_on_hover(false);
-        // }
         self.handle_command_ui(ctx);
-
         let frame = egui::Frame::default();
-        self.right_panel(ctx, frame);
-        egui::CentralPanel::default().frame(frame)
-            .show(ctx, |ui| {
-                {
-                    let file = ui.input(|s| {
-                        match s.raw.dropped_files.first() {
-                            Some(DroppedFile { path: Some(first), .. }) => {
-                                Some(first.clone())
-                            }
-                            _ => None
-                        }
-                    });
-                    if let Some(f) = file {
-                        self.open_file(ctx, f);
-                    }
-                }
-                if self.player.is_some() {
-                    self.handle_key_player(ui, ctx);
-                }
-                let none = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
-
-                let rect = {
-                    const WIDTH: f32 = 30.0;
-                    let right_center = egui::Pos2 {
-                        x: ui.min_rect().right() - WIDTH / 2.0,
-                        y: ui.min_rect().center().y,
-                    };
-                    egui::Rect::from_center_size(right_center, egui::Vec2::splat(WIDTH))
-                };
-                let button = ui.put(rect, egui::Button::new(self.collapse_str()).small());
-                if button.clicked() {
-                    self.collapse = !self.collapse;
-                }
-
-                if !button.hovered() && self.player.is_none() && none.hovered() {
-                    self.handle_key_no_player(ui, ctx);
-                }
-            });
+        self.title_bar(ctx, frame);
+        self.main_frame(ctx, frame);
     }
 }
