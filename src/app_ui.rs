@@ -57,7 +57,7 @@ impl AppUi {
                                     player.tab_seek();
                                 }
                             }
-                            Key::ArrowUp | Key::PlusEquals => {
+                            Key::ArrowUp | Key::Plus => {
                                 let v = player::kits::Volume::plus_volume(player.audio_volume.get());
                                 player.audio_volume.set(v);
                             }
@@ -560,16 +560,19 @@ impl AppUi {
     }
 
     pub fn run_app() {
+        let title = "Door Player";
         let ops = eframe::NativeOptions {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
             viewport: egui::ViewportBuilder {
+                title: Some(title.to_string()),
                 decorations: Some(false),
+                resizable: Some(true),
                 ..Default::default()
             },
             ..Default::default()
         };
-        let title = "Door Player";
+
         let re = eframe::run_native(title, ops,
                                     Box::new(|cc| Box::new(AppUi::new(cc, title))), );
         if let Err(e) = re {
