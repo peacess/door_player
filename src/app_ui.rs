@@ -272,40 +272,73 @@ impl AppUi {
     }
 
     fn title_bar(&mut self, ctx: &egui::Context, frame: Frame) {
+        use egui::{Button,RichText,Layout,Align};
         if ctx.input(|c| c.viewport().fullscreen.unwrap_or_default()) {
             return;
         }
 
-        let height = 36.0;
-        egui::TopBottomPanel::top("title_bar_frame").frame(frame).show_separator_line(false).exact_height(height).show(ctx, |ui| {
-            let app_rect = ui.max_rect();
-
+        let title_bar_height = 32.0;
+        egui::TopBottomPanel::top("title_bar_frame").frame(frame).show_separator_line(false).exact_height(title_bar_height).show(ctx, |ui| {
             let title_bar_rect = {
-                let mut rect = app_rect;
-                rect.max.y = rect.min.y + height;
+                let mut rect = ui.max_rect();
+                rect.max.y = rect.min.y + title_bar_height;
                 rect
             };
-
-            let painter = ui.painter();
-
             let title_bar_response = ui.interact(title_bar_rect, egui::Id::new("title_bar"), egui::Sense::click());
 
-            // Paint the title:
-            painter.text(
+            ui.painter().text(
                 title_bar_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 &self.title,
-                egui::FontId::proportional(20.0),
+                egui::FontId::proportional(16.0),
                 ui.style().visuals.text_color(),
             );
 
             if title_bar_response.double_clicked() {
                 let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                ui.ctx()
-                    .send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
+                ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
             } else if title_bar_response.is_pointer_button_down_on() {
                 ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
             }
+
+            ui.allocate_ui_at_rect(title_bar_rect,|ui|{
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
+
+                    ui.add_space(8.0);
+                    let button_height = 12.0;
+                    let close_response = ui
+                        .add(Button::new(RichText::new("❌").size(button_height)))
+                        .on_hover_text("Close the window");
+                    if close_response.clicked() {
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+
+                    let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                    if is_maximized {
+                        let maximized_response = ui
+                            .add(Button::new(RichText::new("🗗").size(button_height)))
+                            .on_hover_text("Restore window");
+                        if maximized_response.clicked() {
+                            ui.ctx()
+                                .send_viewport_cmd(ViewportCommand::Maximized(false));
+                        }
+                    } else {
+                        let maximized_response = ui
+                            .add(Button::new(RichText::new("🗗").size(button_height)))
+                            .on_hover_text("Maximize window");
+                        if maximized_response.clicked() {
+                            ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(true));
+                        }
+                    }
+
+                    let minimized_response = ui
+                        .add(Button::new(RichText::new("🗕").size(button_height)))
+                        .on_hover_text("Minimize the window");
+                    if minimized_response.clicked() {
+                        ui.ctx().send_viewport_cmd(ViewportCommand::Minimized(true));
+                    }
+                });
+            });
         });
     }
     fn main_frame(&mut self, ctx: &egui::Context, frame: egui::Frame) {

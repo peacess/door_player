@@ -16,7 +16,7 @@ env_logger = "0.10"
 egui = "0.25.0"
 eframe = { version = "0.25.0", features = ["wgpu"]}
 
-rfd = "0.12"
+rfd = "0.13"
 ffmpeg-next = {version = "6.1.1", default-features = true}
 #ffmpeg-the-third = {version = "1.2.2+ffmpeg-6.0"}
 #rusty_ffmpeg = "0.13.1+ffmpeg.6.0"
