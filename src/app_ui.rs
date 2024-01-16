@@ -2,7 +2,7 @@ use std::{fs, path};
 use std::default::Default;
 use std::path::PathBuf;
 
-use egui::{DroppedFile, Event, Frame, Key, PointerButton, Ui, ViewportCommand};
+use egui;
 
 use crate::kits::Shared;
 use crate::player;
@@ -23,7 +23,7 @@ pub struct AppUi {
 }
 
 impl AppUi {
-    pub(crate) fn handle_key_player(&mut self, ui: &mut Ui, ctx: &egui::Context) {
+    pub(crate) fn handle_key_player(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         if let Some(player) = &mut self.player {
             let p = {
                 if self.no_scale {
@@ -39,33 +39,33 @@ impl AppUi {
 
             ui.input(|k| {
                 for e in &k.events {
-                    if let Event::Key { key, pressed: true, modifiers, .. } = e {
+                    if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
                         match key {
-                            Key::Escape => {
+                            egui::Key::Escape => {
                                 self.command_ui.set(CommandUi::Close);
                             }
-                            Key::ArrowLeft => {
+                            egui::Key::ArrowLeft => {
                                 player.go_back_ui(&self.command_go_ui);
                             }
-                            Key::ArrowRight => {
+                            egui::Key::ArrowRight => {
                                 player.go_ahead_ui(&self.command_go_ui);
                             }
-                            Key::Tab => {
+                            egui::Key::Tab => {
                                 if modifiers.ctrl {
                                     player.tab_seek_ms = player.elapsed_ms();
                                 } else {
                                     player.tab_seek();
                                 }
                             }
-                            Key::ArrowUp | Key::Plus => {
+                            egui::Key::ArrowUp | egui::Key::Plus => {
                                 let v = player::kits::Volume::plus_volume(player.audio_volume.get());
                                 player.audio_volume.set(v);
                             }
-                            Key::ArrowDown | Key::Minus => {
+                            egui::Key::ArrowDown | egui::Key::Minus => {
                                 let v = player::kits::Volume::minus_volume(player.audio_volume.get());
                                 player.audio_volume.set(v);
                             }
-                            Key::Space => {
+                            egui::Key::Space => {
                                 let state = player.player_state.get();
                                 match state {
                                     PlayerState::Stopped => {
@@ -80,7 +80,7 @@ impl AppUi {
                                     _ => {}
                                 }
                             }
-                            Key::F1 => {
+                            egui::Key::F1 => {
                                 self.command_ui.set(CommandUi::FullscreenToggle);
                             }
                             _ => {}
@@ -94,13 +94,13 @@ impl AppUi {
             let mut next = false;
             let mut pre = false;
             for e in &k.events {
-                if let Event::Key { key, pressed: true, .. } = e {
+                if let egui::Event::Key { key, pressed: true, .. } = e {
                     match key {
-                        Key::PageDown => {
+                        egui::Key::PageDown => {
                             next = true;
                             break;
                         }
-                        Key::PageUp => {
+                        egui::Key::PageUp => {
                             pre = true;
                             break;
                         }
@@ -129,16 +129,16 @@ impl AppUi {
         }
     }
 
-    pub(crate) fn handle_key_no_player(&mut self, ui: &mut Ui, ctx: &egui::Context) {
+    pub(crate) fn handle_key_no_player(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let is_open = ui.input(|k| {
             let mut is_open = false;
             for e in &k.events {
                 match e {
-                    Event::Key { key: Key::Space, pressed: true, .. } | Event::PointerButton { button: PointerButton::Primary, pressed: true, .. } => {
+                    egui::Event::Key { key: egui::Key::Space, pressed: true, .. } | egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed: true, .. } => {
                         is_open = true;
                         break;
                     }
-                    Event::Key { key: Key::Escape, pressed: true, .. } => {
+                    egui::Event::Key { key: egui::Key::Escape, pressed: true, .. } => {
                         self.command_ui.set(CommandUi::Close);
                     }
                     _ => {}
@@ -245,34 +245,34 @@ impl AppUi {
             CommandUi::None => {}
             CommandUi::FullscreenToggle => {
                 let b = view.fullscreen.unwrap_or_default();
-                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(!b));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(!b));
                 if !b {
                     self.collapse = true;
                 }
             }
             CommandUi::FullscreenTrue => {
-                ctx.send_viewport_cmd(ViewportCommand::Fullscreen(true));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
                 self.collapse = true;
             }
-            CommandUi::FullscreenFalse => ctx.send_viewport_cmd(ViewportCommand::Fullscreen(false)),
+            CommandUi::FullscreenFalse => ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false)),
             CommandUi::MaximizedToggle => {
                 let b = view.maximized.unwrap_or_default();
-                ctx.send_viewport_cmd(ViewportCommand::Maximized(!b));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!b));
             }
-            CommandUi::MaximizedTrue => ctx.send_viewport_cmd(ViewportCommand::Maximized(true)),
-            CommandUi::MaximizedFalse => ctx.send_viewport_cmd(ViewportCommand::Maximized(false)),
+            CommandUi::MaximizedTrue => ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true)),
+            CommandUi::MaximizedFalse => ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false)),
             CommandUi::MinimizedToggle => {
                 let b = view.minimized.unwrap_or_default();
-                ctx.send_viewport_cmd(ViewportCommand::Minimized(!b));
+                ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(!b));
             }
-            CommandUi::MinimizedTrue => ctx.send_viewport_cmd(ViewportCommand::Minimized(true)),
-            CommandUi::MinimizedFalse => ctx.send_viewport_cmd(ViewportCommand::Minimized(false)),
-            CommandUi::Close => ctx.send_viewport_cmd(ViewportCommand::Close),
+            CommandUi::MinimizedTrue => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+            CommandUi::MinimizedFalse => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false)),
+            CommandUi::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
         }
     }
 
-    fn title_bar(&mut self, ctx: &egui::Context, frame: Frame) {
-        use egui::{Button,RichText,Layout,Align};
+    fn title_bar(&mut self, ctx: &egui::Context, frame: egui::Frame) {
+        use egui::{Align, Button, Layout, RichText};
         if ctx.input(|c| c.viewport().fullscreen.unwrap_or_default()) {
             return;
         }
@@ -296,13 +296,13 @@ impl AppUi {
 
             if title_bar_response.double_clicked() {
                 let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(!is_maximized));
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
             } else if title_bar_response.is_pointer_button_down_on() {
-                ui.ctx().send_viewport_cmd(ViewportCommand::StartDrag);
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
 
-            ui.allocate_ui_at_rect(title_bar_rect,|ui|{
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui|{
+            ui.allocate_ui_at_rect(title_bar_rect, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.visuals_mut().button_frame = false;
                     let button_height = 16.0;
                     ui.add_space(8.0);
@@ -320,14 +320,14 @@ impl AppUi {
                             .on_hover_text("Restore window");
                         if maximized_response.clicked() {
                             ui.ctx()
-                                .send_viewport_cmd(ViewportCommand::Maximized(false));
+                                .send_viewport_cmd(egui::ViewportCommand::Maximized(false));
                         }
                     } else {
                         let maximized_response = ui
-                            .add(Button::new(RichText::new(" 🗗 ").size(button_height)))
+                            .add(Button::new(RichText::new(" 🗖 ").size(button_height)))
                             .on_hover_text("Maximize window");
                         if maximized_response.clicked() {
-                            ui.ctx().send_viewport_cmd(ViewportCommand::Maximized(true));
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
                         }
                     }
 
@@ -335,7 +335,7 @@ impl AppUi {
                         .add(Button::new(RichText::new(" 🗕 ").size(button_height)))
                         .on_hover_text("Minimize the window");
                     if minimized_response.clicked() {
-                        ui.ctx().send_viewport_cmd(ViewportCommand::Minimized(true));
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
                     }
                 });
             });
@@ -348,7 +348,7 @@ impl AppUi {
                 {
                     let file = ui.input(|s| {
                         match s.raw.dropped_files.first() {
-                            Some(DroppedFile { path: Some(first), .. }) => {
+                            Some(egui::DroppedFile { path: Some(first), .. }) => {
                                 Some(first.clone())
                             }
                             _ => None
@@ -413,7 +413,7 @@ impl AppUi {
         }
     }
 
-    fn right_panel(&mut self, ctx: &egui::Context, frame: Frame) {
+    fn right_panel(&mut self, ctx: &egui::Context, frame: egui::Frame) {
         if !self.collapse {
             egui::SidePanel::right("right_panel").frame(frame)
                 .min_width(0.0)
