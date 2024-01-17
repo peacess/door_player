@@ -284,7 +284,7 @@ impl AppUi {
                 rect.max.y = rect.min.y + title_bar_height;
                 rect
             };
-            let title_bar_response = ui.interact(title_bar_rect, egui::Id::new("title_bar"), egui::Sense::click());
+            let title_bar_response = ui.interact(title_bar_rect, egui::Id::new("title_bar"), egui::Sense::click_and_drag());
 
             ui.painter().text(
                 title_bar_rect.center(),
@@ -295,48 +295,91 @@ impl AppUi {
             );
 
             if title_bar_response.double_clicked() {
-                let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!is_maximized));
+                //the double click do not work,why?
+                let is_full = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_full));
             } else if title_bar_response.is_pointer_button_down_on() {
                 ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
             }
 
             ui.allocate_ui_at_rect(title_bar_rect, |ui| {
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.visuals_mut().button_frame = false;
-                    let button_height = 16.0;
-                    ui.add_space(8.0);
-                    let close_response = ui
-                        .add(Button::new(RichText::new(" ❌ ").size(button_height)))
-                        .on_hover_text("Close the window");
-                    if close_response.clicked() {
-                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-
-                    let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                    if is_maximized {
-                        let maximized_response = ui
-                            .add(Button::new(RichText::new(" 🗗 ").size(button_height)))
-                            .on_hover_text("Restore window");
-                        if maximized_response.clicked() {
-                            ui.ctx()
-                                .send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                let button_height = 16.0;
+                let space = 8.0;
+                let close_text = " ❌ ";
+                let maximize_text = " 🗖 ";
+                let minimize_text = " 🗕 ";
+                let restore_text = " 🗗 ";
+                ui.columns(2, |cols|{
+                    cols.get_mut(0).expect("").with_layout(Layout::left_to_right(Align::Center), |ui| {
+                        ui.visuals_mut().button_frame = false;
+                        ui.add_space(space);
+                        let close_response = ui
+                            .add(Button::new(RichText::new(close_text).size(button_height)))
+                            .on_hover_text("Close the window");
+                        if close_response.clicked() {
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                         }
-                    } else {
-                        let maximized_response = ui
-                            .add(Button::new(RichText::new(" 🗖 ").size(button_height)))
-                            .on_hover_text("Maximize window");
-                        if maximized_response.clicked() {
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                        }
-                    }
 
-                    let minimized_response = ui
-                        .add(Button::new(RichText::new(" 🗕 ").size(button_height)))
-                        .on_hover_text("Minimize the window");
-                    if minimized_response.clicked() {
-                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                    }
+                        let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                        if is_maximized {
+                            let maximized_response = ui
+                                .add(Button::new(RichText::new(restore_text).size(button_height)))
+                                .on_hover_text("Restore window");
+                            if maximized_response.clicked() {
+                                ui.ctx()
+                                    .send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                            }
+                        } else {
+                            let maximized_response = ui
+                                .add(Button::new(RichText::new(maximize_text).size(button_height)))
+                                .on_hover_text("Maximize window");
+                            if maximized_response.clicked() {
+                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+                            }
+                        }
+
+                        let minimized_response = ui
+                            .add(Button::new(RichText::new(minimize_text).size(button_height)))
+                            .on_hover_text("Minimize the window");
+                        if minimized_response.clicked() {
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                        }
+                    });
+                    cols.get_mut(1).expect("").with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        ui.visuals_mut().button_frame = false;
+                        ui.add_space(space);
+                        let close_response = ui
+                            .add(Button::new(RichText::new(close_text).size(button_height)))
+                            .on_hover_text("Close the window");
+                        if close_response.clicked() {
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+
+                        let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                        if is_maximized {
+                            let maximized_response = ui
+                                .add(Button::new(RichText::new(restore_text).size(button_height)))
+                                .on_hover_text("Restore window");
+                            if maximized_response.clicked() {
+                                ui.ctx()
+                                    .send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                            }
+                        } else {
+                            let maximized_response = ui
+                                .add(Button::new(RichText::new(maximize_text).size(button_height)))
+                                .on_hover_text("Maximize window");
+                            if maximized_response.clicked() {
+                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+                            }
+                        }
+
+                        let minimized_response = ui
+                            .add(Button::new(RichText::new(minimize_text).size(button_height)))
+                            .on_hover_text("Minimize the window");
+                        if minimized_response.clicked() {
+                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                        }
+                    });
                 });
             });
         });
