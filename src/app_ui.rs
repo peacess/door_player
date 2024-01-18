@@ -643,6 +643,7 @@ impl AppUi {
             viewport: egui::ViewportBuilder {
                 title: Some(title.to_string()),
                 decorations: Some(false),
+                titlebar_shown: Some(false),
                 resizable: Some(true),
                 ..Default::default()
             },
