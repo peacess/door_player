@@ -1,6 +1,7 @@
 use std::{fs, path};
 use std::default::Default;
 use std::path::PathBuf;
+use eframe::Theme;
 
 use egui;
 
@@ -640,6 +641,8 @@ impl AppUi {
         let ops = eframe::NativeOptions {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
+            follow_system_theme:false,
+            default_theme: Theme::Dark,
             viewport: egui::ViewportBuilder {
                 title: Some(title.to_string()),
                 decorations: Some(false),

@@ -71,4 +71,5 @@ get the download url from github url:
 [学习如何使用 FFmpeg 打造自己的播放器](https://cloud.tencent.com/developer/article/1940943)  
 [将音视频时钟同步封装成通用模块](https://blog.csdn.net/u013113678/article/details/126898738)  
 [FFmpeg 入门(5)：视频同步](https://www.samirchen.com/ffmpeg-tutorial-5/)  
+[FFMPEG 硬件解码API介绍](https://zhuanlan.zhihu.com/p/168240163)
 

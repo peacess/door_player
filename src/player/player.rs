@@ -48,24 +48,6 @@ impl Player {
             let _ = print_meda_info(&format_input);
         }
 
-        let thread_count = {
-            let l = match fs::metadata(file) {
-                Err(_) => 1,
-                Ok(t) => t.len()
-            };
-            if l < 400 * 1024 * 1024 {
-                1
-            } else if l < 1024 * 1024 * 1024 {
-                2
-            } else if l < 3 * 1024 * 1024 * 1024 {
-                3
-            } else if l < 5 * 1024 * 1024 * 1024 {
-                4
-            } else {
-                6
-            }
-        };
-
         let video_input = ffmpeg::format::input(&path::Path::new(file))?;
         // 获取视频解码器
         let (video_index, video_decoder, video_stream_time_base) = {
@@ -83,10 +65,23 @@ impl Player {
                         video_context.set_parameters(video_stream.parameters());
                         let mut thread_conf = video_context.threading();
                         log::info!("video threads default : {:?}", &thread_conf);
-                        thread_conf.count = thread_count;
-                        thread_conf.kind = ffmpeg::threading::Type::Frame;
-                        log::info!("video threads new : {:?}", &thread_conf);
-                        video_context.set_threading(thread_conf);
+                        let thread_count = {
+                            let l = match fs::metadata(file) {
+                                Err(_) => 1,
+                                Ok(t) => t.len()
+                            };
+                            if l >= 4 * 1024 * 1024 * 1024 {
+                                2
+                            }else {
+                                1
+                            }
+                        };
+                        if thread_count > 1 {
+                            thread_conf.count = thread_count;
+                            thread_conf.kind = ffmpeg::threading::Type::Slice;
+                            log::info!("video threads new : {:?}", &thread_conf);
+                            video_context.set_threading(thread_conf);
+                        }
                     }
                     // ffmpeg::codec::Context::new()
 
@@ -115,24 +110,15 @@ impl Player {
             if let Some(audio_stream) = audio_stream {
                 let audio_index = audio_stream.index();
                 #[cfg(not(feature = "meh_ffmpeg"))]
-                    let mut audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
+                    let audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
                 #[cfg(feature = "meh_ffmpeg")]
                     let mut audio_context = ffmpeg::codec::context::Context::new();
                 {
                     #[cfg(feature = "meh_ffmpeg")]
                     audio_context.set_parameters(audio_stream.parameters());
 
-                    let mut thread_conf = audio_context.threading();
+                    let thread_conf = audio_context.threading();
                     log::info!("audio threads default : {:?}", &thread_conf);
-                    if thread_count > 4 {
-                        thread_conf.count = 4;
-                    } else {
-                        thread_conf.count = thread_count;
-                    }
-
-                    thread_conf.kind = ffmpeg::threading::Type::Frame;
-                    log::info!("audio threads new : {:?}", &thread_conf);
-                    audio_context.set_threading(thread_conf);
                 }
                 let audio_decoder = audio_context.decoder().audio()?;
                 #[cfg(not(feature = "meh_ffmpeg"))]

@@ -26,7 +26,7 @@ pub fn timestamp_to_millisecond(timestamp: i64, time_base: Rational) -> i64 {
 pub struct FfmpegKit {}
 
 impl FfmpegKit {
-    pub fn demuxers() -> std::vec::Vec<String> {
+    pub fn demuxers() -> Vec<String> {
         let mut names = std::vec::Vec::with_capacity(512);
 
         let mut opaque: *mut c_void = std::ptr::null_mut();
@@ -69,6 +69,10 @@ impl FfmpegKit {
         log::info!("all file type: {:?}", names);
         names
     }
+
+    // pub fn hwaccels() -> Vec<String> {
+    //
+    // }
 }
 
 pub struct Volume {}
