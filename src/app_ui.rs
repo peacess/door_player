@@ -1,9 +1,8 @@
 use std::{fs, path};
 use std::default::Default;
 use std::path::PathBuf;
-use eframe::Theme;
 
-use egui;
+use eframe::Theme;
 
 use crate::kits::Shared;
 use crate::player;
@@ -310,7 +309,7 @@ impl AppUi {
                 let maximize_text = " 🗖 ";
                 let minimize_text = " 🗕 ";
                 let restore_text = " 🗗 ";
-                ui.columns(2, |cols|{
+                ui.columns(2, |cols| {
                     cols.get_mut(0).expect("").with_layout(Layout::left_to_right(Align::Center), |ui| {
                         ui.visuals_mut().button_frame = false;
                         ui.add_space(space);
@@ -641,7 +640,7 @@ impl AppUi {
         let ops = eframe::NativeOptions {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
-            follow_system_theme:false,
+            follow_system_theme: false,
             default_theme: Theme::Dark,
             viewport: egui::ViewportBuilder {
                 title: Some(title.to_string()),
