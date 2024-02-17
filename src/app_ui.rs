@@ -132,14 +132,19 @@ impl AppUi {
     pub(crate) fn handle_key_no_player(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let is_open = ui.input(|k| {
             let mut is_open = false;
-            for e in &k.events {
+            'EVENTS: for e in &k.events {
                 match e {
-                    egui::Event::Key { key: egui::Key::Space, pressed: true, .. } | egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed: true, .. } => {
+                    egui::Event::Key { key: egui::Key::Space, pressed: true, .. } => {
                         is_open = true;
-                        break;
+                        break 'EVENTS;
+                    }
+                    egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed: false, .. } => {
+                        is_open = true;
+                        break 'EVENTS;
                     }
                     egui::Event::Key { key: egui::Key::Escape, pressed: true, .. } => {
                         self.command_ui.set(CommandUi::Close);
+                        break 'EVENTS;
                     }
                     _ => {}
                 }

@@ -26,13 +26,21 @@ Features:
 [ffmpeg](https://github.com/zmwangx/rust-ffmpeg/wiki/Notes-on-building)  
 
 ## Ubuntu
-sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg6  
-sudo apt update  
-sudo apt install libass-dev libavdevice-dev ffmpeg  
 
-note: if you want to downgrade to 6.0.  
-sudo apt install ppa-purge && sudo ppa-purge ppa:ubuntuhandbook1/ffmpeg6  
-sudo apt install ffmpeg  
+```shell
+#   ffmpeg
+   sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg6  
+   sudo apt update  
+   sudo apt install libass-dev libavdevice-dev ffmpeg  
+   
+   note: if you want to downgrade to 6.0.  
+   sudo apt install ppa-purge && sudo ppa-purge ppa:ubuntuhandbook1/ffmpeg6  
+   sudo apt install ffmpeg  
+   
+#   dependencies
+   sudo apt install librust-alsa-sys-dev
+```
+
 ## window
 
 ```shell
