@@ -641,7 +641,6 @@ impl AppUi {
     }
 
     pub fn run_app() {
-        log::info!("ffmpeg version : {:?}",unsafe {std::ffi::CStr::from_ptr(ffmpeg::ffi::av_version_info()) });
         let title = "Door Player";
         let ops = eframe::NativeOptions {
             centered: true,

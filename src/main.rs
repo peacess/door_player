@@ -25,5 +25,6 @@ fn main() {
         log::error!("{}", e);
         return;
     }
+    log::info!("ffmpeg version : {:?}",unsafe {std::ffi::CStr::from_ptr(ffmpeg::ffi::av_version_info()) });
     AppUi::run_app();
 }
