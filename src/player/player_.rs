@@ -5,14 +5,10 @@ use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 
 use chrono::{DateTime, Utc};
-use egui::{Align2, Color32, FontId, Image, Rect, Response, Rounding, Sense, Spinner, Ui, vec2, Vec2};
-use egui::epaint::Shadow;
-use egui::load::SizedTexture;
+use egui::{epaint::Shadow, load::SizedTexture, Ui};
 use ffmpeg::software::resampling::Context as ResamplingContext;
-use kanal::{Receiver, Sender};
 
 use crate::kits::Shared;
-use crate::player;
 use crate::player::{CommandGo, CommandUi, kits, MAX_DIFF_MOVE_MOUSE, PlayerState, SubtitlePlayFrame};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
@@ -258,7 +254,7 @@ impl Player {
     }
 
     pub fn default_texture_handle(ctx: &egui::Context) -> egui::TextureHandle {
-        let img = egui::ColorImage::new([124, 124], Color32::TRANSPARENT);
+        let img = egui::ColorImage::new([124, 124], egui::Color32::TRANSPARENT);
         ctx.load_texture("video_stream_default", img, egui::TextureOptions::LINEAR)
     }
 
@@ -376,7 +372,7 @@ impl Player {
         }
     }
 
-    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, audio_packet_receiver: Receiver<Option<ffmpeg::Packet>>, audio_play_sender: Sender<AudioPlayFrame>) {
+    fn audio_decode_run(&self, mut audio_decoder: ffmpeg::decoder::Audio, audio_packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, audio_play_sender: kanal::Sender<AudioPlayFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let mut audio_re_sampler = {
             let stream_config = play_ctrl.audio_config();
@@ -536,7 +532,7 @@ impl Player {
         });
     }
 
-    fn audio_play_run(&self, audio_play_receiver: Receiver<AudioPlayFrame>) {
+    fn audio_play_run(&self, audio_play_receiver: kanal::Receiver<AudioPlayFrame>) {
         let mut play_ctrl = self.play_ctrl.clone();
         let _ = std::thread::Builder::new().name("audio play".to_string()).spawn(move || {
             let mut empty_count = 0;
@@ -578,7 +574,7 @@ impl Player {
         });
     }
 
-    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, video_packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, video_play_sender: Sender<VideoPlayFrame>, mut graph: Option<ffmpeg::filter::Graph>) {
+    fn video_decode_run(&self, mut video_decoder: ffmpeg::decoder::Video, video_packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, video_play_sender: kanal::Sender<VideoPlayFrame>, mut graph: Option<ffmpeg::filter::Graph>) {
         let play_ctrl = self.play_ctrl.clone();
         let width = video_decoder.width() as usize;
         let height = video_decoder.height() as usize;
@@ -711,7 +707,7 @@ impl Player {
         });
     }
 
-    fn video_play_run(&self, ctx: egui::Context, video_play_receiver: Receiver<VideoPlayFrame>) {
+    fn video_play_run(&self, ctx: egui::Context, video_play_receiver: kanal::Receiver<VideoPlayFrame>) {
         let mut play_ctrl = self.play_ctrl.clone();
         let _ = std::thread::Builder::new().name("video play".to_string()).spawn(move || {
             let mut empty_count = 0;
@@ -784,7 +780,7 @@ impl Player {
     /// [merge frame] https://github.com/nldzsz/ffmpeg-demo
     /// the fn do not use, replace to subtitle filter
     #[allow(dead_code)]
-    fn subtitle_decode_run(&self, mut subtitle_decoder: ffmpeg::decoder::Subtitle, subtitle_packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, subtitle_play_sender: Sender<SubtitlePlayFrame>) {
+    fn subtitle_decode_run(&self, mut subtitle_decoder: ffmpeg::decoder::Subtitle, subtitle_packet_receiver: kanal::Receiver<Option<ffmpeg::Packet>>, subtitle_play_sender: kanal::Sender<SubtitlePlayFrame>) {
         let play_ctrl = self.play_ctrl.clone();
         let _ = std::thread::Builder::new().name("subtitle decode".to_string()).spawn(move || loop {
             if PlayerState::Stopped == play_ctrl.player_state.get() {
@@ -1031,14 +1027,14 @@ impl Player {
 }
 
 impl Player {
-    pub fn ui(&mut self, ui: &mut Ui, size: [f32; 2]) -> Response {
-        let image = Image::new(SizedTexture::new(self.play_ctrl.texture_handle.id(), size)).sense(Sense::click());
+    pub fn ui(&mut self, ui: &mut Ui, size: [f32; 2]) -> egui::Response {
+        let image = egui::Image::new(SizedTexture::new(self.play_ctrl.texture_handle.id(), size)).sense(egui::Sense::click());
         let response = ui.add(image);
         self.render_ui(ui, &response);
         self.process_state();
         response
     }
-    fn render_ui(&mut self, ui: &mut Ui, image_res: &Response) -> Option<Rect> {
+    fn render_ui(&mut self, ui: &mut Ui, image_res: &egui::Response) -> Option<egui::Rect> {
         let hovered = ui.rect_contains_pointer(image_res.rect);
         let currently_seeking = matches!(self.player_state.get(), PlayerState::Seeking(_));
         let is_stopped = self.player_state.get() == PlayerState::Stopped;
@@ -1057,7 +1053,7 @@ impl Player {
                 }
             });
             if moving {
-                self.mouth_move_ts = chrono::Utc::now().timestamp_millis();
+                self.mouth_move_ts = Utc::now().timestamp_millis();
                 let cursor = ui.ctx().output(|o| o.cursor_icon);
                 if cursor == egui::CursorIcon::None {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Default);
@@ -1073,20 +1069,20 @@ impl Player {
 
             let seekbar_offset = 20.;
             let seekbar_pos = image_res.rect.left_bottom()
-                + vec2(seekbar_width_offset / 2., -seekbar_offset);
+                + egui::vec2(seekbar_width_offset / 2., -seekbar_offset);
             let seekbar_height = 3.;
             let mut full_seek_bar_rect =
-                Rect::from_min_size(seekbar_pos, vec2(full_seek_bar_width, seekbar_height));
+                egui::Rect::from_min_size(seekbar_pos, egui::vec2(full_seek_bar_width, seekbar_height));
 
             let mut seekbar_rect =
-                Rect::from_min_size(seekbar_pos, vec2(seekbar_width, seekbar_height));
+                egui::Rect::from_min_size(seekbar_pos, egui::vec2(seekbar_width, seekbar_height));
             let seekbar_interact_rect = full_seek_bar_rect.expand(10.);
-            ui.interact(seekbar_interact_rect, image_res.id, Sense::drag());
+            ui.interact(seekbar_interact_rect, image_res.id, egui::Sense::drag());
 
             let seekbar_response = ui.interact(
                 seekbar_interact_rect,
                 image_res.id.with("seekbar"),
-                Sense::click_and_drag(),
+                egui::Sense::click_and_drag(),
             );
 
             let seekbar_hovered = seekbar_response.hovered();
@@ -1115,14 +1111,14 @@ impl Player {
                     .linear_multiply(seek_indicator_anim);
                 let spinner_size = 20. * seek_indicator_anim;
                 ui.painter().add(
-                    seek_indicator_shadow.tessellate(image_res.rect, Rounding::ZERO),
+                    seek_indicator_shadow.tessellate(image_res.rect, egui::Rounding::ZERO),
                 );
                 ui.put(
-                    Rect::from_center_size(
+                    egui::Rect::from_center_size(
                         image_res.rect.center(),
-                        Vec2::splat(spinner_size),
+                        egui::Vec2::splat(spinner_size),
                     ),
-                    Spinner::new().size(spinner_size),
+                    egui::Spinner::new().size(spinner_size),
                 );
             }
 
@@ -1148,7 +1144,7 @@ impl Player {
                     }
                 }
             }
-            let text_color = Color32::WHITE.linear_multiply(seekbar_anim_frac);
+            let text_color = egui::Color32::WHITE.linear_multiply(seekbar_anim_frac);
 
             let pause_icon = if is_paused {
                 "▶"
@@ -1171,21 +1167,21 @@ impl Player {
             } else {
                 "🔇"
             };
-            let icon_font_id = FontId {
+            let icon_font_id = egui::FontId {
                 size: 16.0,
                 ..std::default::Default::default()
             };
 
             let text_y_offset = -7.;
-            let sound_icon_offset = vec2(-5., text_y_offset);
+            let sound_icon_offset = egui::vec2(-5., text_y_offset);
             let sound_icon_pos = full_seek_bar_rect.right_top() + sound_icon_offset;
 
-            let pause_icon_offset = vec2(3., text_y_offset);
+            let pause_icon_offset = egui::vec2(3., text_y_offset);
             let pause_icon_pos = full_seek_bar_rect.left_top() + pause_icon_offset;
 
-            let duration_text_offset = vec2(25., text_y_offset);
+            let duration_text_offset = egui::vec2(25., text_y_offset);
             let duration_text_pos = full_seek_bar_rect.left_top() + duration_text_offset;
-            let duration_text_font_id = FontId {
+            let duration_text_font_id = egui::FontId {
                 size: 14.0,
                 ..std::default::Default::default()
             };
@@ -1195,23 +1191,23 @@ impl Player {
 
             let mut shadow_rect = image_res.rect;
             shadow_rect.set_top(shadow_rect.bottom() - seekbar_offset - 10.);
-            let shadow_mesh = shadow.tessellate(shadow_rect, Rounding::ZERO);
+            let shadow_mesh = shadow.tessellate(shadow_rect, egui::Rounding::ZERO);
 
-            let full_seek_bar_color = Color32::GRAY.linear_multiply(seekbar_anim_frac);
-            let seekbar_color = Color32::WHITE.linear_multiply(seekbar_anim_frac);
+            let full_seek_bar_color = egui::Color32::GRAY.linear_multiply(seekbar_anim_frac);
+            let seekbar_color = egui::Color32::WHITE.linear_multiply(seekbar_anim_frac);
 
             ui.painter().add(shadow_mesh);
 
             ui.painter().rect_filled(
                 full_seek_bar_rect,
-                Rounding::ZERO,
+                egui::Rounding::ZERO,
                 full_seek_bar_color.linear_multiply(0.5),
             );
             ui.painter()
-                .rect_filled(seekbar_rect, Rounding::ZERO, seekbar_color);
+                .rect_filled(seekbar_rect, egui::Rounding::ZERO, seekbar_color);
             ui.painter().text(
                 pause_icon_pos,
-                Align2::LEFT_BOTTOM,
+                egui::Align2::LEFT_BOTTOM,
                 pause_icon,
                 icon_font_id.clone(),
                 text_color,
@@ -1219,7 +1215,7 @@ impl Player {
 
             ui.painter().text(
                 duration_text_pos,
-                Align2::LEFT_BOTTOM,
+                egui::Align2::LEFT_BOTTOM,
                 self.duration_text(),
                 duration_text_font_id,
                 text_color,
@@ -1249,13 +1245,13 @@ impl Player {
             {
                 let sound_icon_rect = ui.painter().text(
                     sound_icon_pos,
-                    Align2::RIGHT_BOTTOM,
+                    egui::Align2::RIGHT_BOTTOM,
                     sound_icon,
                     icon_font_id.clone(),
                     text_color,
                 );
 
-                if ui.interact(sound_icon_rect, image_res.id.with("sound_icon_sense"), Sense::click()).clicked() {
+                if ui.interact(sound_icon_rect, image_res.id.with("sound_icon_sense"), egui::Sense::click()).clicked() {
                     let mute = self.get_mute();
                     self.set_mute(!mute);
                 }
@@ -1265,11 +1261,11 @@ impl Player {
 
                 let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_rect);
                 if sound_slider_hovered {
-                    let mut volume = -player::kits::Volume::int_volume(self.audio_volume.get());
-                    let mut volume_slider = egui::Slider::new(&mut volume, -player::kits::Volume::MAX_INT_VOLUME..=0).vertical();
+                    let mut volume = -kits::Volume::int_volume(self.audio_volume.get());
+                    let mut volume_slider = egui::Slider::new(&mut volume, -kits::Volume::MAX_INT_VOLUME..=0).vertical();
                     volume_slider = volume_slider.show_value(false);
                     if ui.put(sound_slider_rect, volume_slider).changed() {
-                        let v = player::kits::Volume::f64_volume(-volume);
+                        let v = kits::Volume::f64_volume(-volume);
                         self.audio_volume.set(v);
                     }
                 }

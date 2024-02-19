@@ -70,8 +70,8 @@ impl AudioDevice {
                 }
             }
         };
-        let stream = device.build_output_stream(&output_config.clone().into(), move |data: &mut [T], cbinfo| {
-            Self::write_audio(data, &mut consumer, cbinfo);
+        let stream = device.build_output_stream(&output_config.clone().into(), move |data: &mut [T], info| {
+            Self::write_audio(data, &mut consumer, info);
         }, |e| {
             log::error!("{}", e);
         }, None)?;

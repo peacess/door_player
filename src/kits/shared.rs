@@ -1,7 +1,7 @@
 pub use core::sync::atomic::{fence, Ordering};
 use std::sync::Arc;
 
-/// Simple concurrecy of primitive values.
+/// Simple concurrency of primitive values.
 #[derive(Clone)]
 pub struct Shared<T: bytemuck::NoUninit> {
     raw_value: Arc<atomic::Atomic<T>>,

@@ -647,7 +647,7 @@ impl AppUi {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
             wgpu_options: egui_wgpu::WgpuConfiguration {
-                // supported_backends:wgpu::Backends::GL,
+                // supported_backends: wgpu::Backends::GL,
                 ..Default::default()
             },
             follow_system_theme: false,
@@ -665,24 +665,24 @@ impl AppUi {
         let re = eframe::run_native(title, ops,
                                     Box::new(|cc| Box::new(AppUi::new(cc, title))), );
         if let Err(e) = re {
-            log::error!("{}", e);
+            log::error!("{:?}", e);
         }
     }
 
-    fn compute_player_size(vedio_size: egui::Vec2, ui_size: egui::Vec2) -> egui::Vec2 {
+    fn compute_player_size(video_size: egui::Vec2, ui_size: egui::Vec2) -> egui::Vec2 {
         let mut re = egui::Vec2::splat(0.0);
-        if ui_size.x > 0.0 && ui_size.y > 0.0 && vedio_size.x > 0.0 && vedio_size.y > 0.0 {
-            let x_ = ui_size.x / vedio_size.x;
-            let y_ = ui_size.y / vedio_size.y;
+        if ui_size.x > 0.0 && ui_size.y > 0.0 && video_size.x > 0.0 && video_size.y > 0.0 {
+            let x_ = ui_size.x / video_size.x;
+            let y_ = ui_size.y / video_size.y;
             if x_ > y_ {
-                re.x = vedio_size.x * y_;
+                re.x = video_size.x * y_;
                 re.y = ui_size.y;
             } else if x_ == y_ {
                 re.x = ui_size.x;
                 re.y = ui_size.y;
             } else {
                 re.x = ui_size.x;
-                re.y = vedio_size.y * x_;
+                re.y = video_size.y * x_;
             }
         }
         re

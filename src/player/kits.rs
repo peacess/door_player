@@ -7,7 +7,7 @@ use std::sync::Arc;
 use ffmpeg::{Rational, Rescale};
 use ringbuf::HeapRb;
 
-use crate::player::MILLISEC_TIME_BASE;
+use crate::player::MILLISECOND_TIME_BASE;
 
 pub type RingBufferProducer<T> = ringbuf::Producer<T, Arc<HeapRb<T>>>;
 pub type RingBufferConsumer<T> = ringbuf::Consumer<T, Arc<HeapRb<T>>>;
@@ -20,14 +20,14 @@ pub fn is_ffmpeg_eof_error(error: &anyhow::Error) -> bool {
 }
 
 pub fn timestamp_to_millisecond(timestamp: i64, time_base: Rational) -> i64 {
-    timestamp.rescale(time_base, MILLISEC_TIME_BASE)
+    timestamp.rescale(time_base, MILLISECOND_TIME_BASE)
 }
 
 pub struct FfmpegKit {}
 
 impl FfmpegKit {
     pub fn demuxers() -> Vec<String> {
-        let mut names = std::vec::Vec::with_capacity(512);
+        let mut names = Vec::with_capacity(512);
 
         let mut opaque: *mut c_void = std::ptr::null_mut();
         let mut input_format: *const ffmpeg::ffi::AVInputFormat;
@@ -42,23 +42,6 @@ impl FfmpegKit {
                     let ns: Vec<_> = name.split(',').map(|s| s.to_string()).collect();
                     names.extend(ns);
                 }
-                // {
-                //     if  !(*input_format).long_name.is_null() {
-                //         log::info!("long_name: {}", CStr::from_ptr((*input_format).long_name).to_str().expect(""));
-                //     }
-                //     log::info!("name: {}, flags: {}", CStr::from_ptr((*input_format).name).to_str().expect(""),
-                //         (*input_format).flags
-                //     );
-                //     if !(*input_format).extensions.is_null() {
-                //         log::info!("extensions: {}", CStr::from_ptr((*input_format).extensions).to_str().expect(""));
-                //     }
-                //     if !(*input_format).mime_type.is_null() {
-                //         log::info!("mime_type: {}", CStr::from_ptr((*input_format).mime_type).to_str().expect(""));
-                //     }
-                //     // log::info!("raw_codec_id: {}, priv_data_size {}\n", (*input_format).raw_codec_id, (*input_format).raw_codec_id);
-                //     log::info!("\n{:?}\n", &*input_format);
-                //
-                // }
             }
         }
         if !names.contains(&"mkv".to_string()) {
@@ -69,10 +52,6 @@ impl FfmpegKit {
         log::info!("all file type: {:?}", names);
         names
     }
-
-    // pub fn hwaccels() -> Vec<String> {
-    //
-    // }
 }
 
 pub struct Volume {}

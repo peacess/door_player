@@ -15,6 +15,6 @@ pub const VIDEO_SYNC_THRESHOLD_MIN: f64 = -0.1;
 /// 视频同步阈值最大 (视频领先于音频的最大时间)
 pub const VIDEO_SYNC_THRESHOLD_MAX: f64 = 0.025;
 pub const AV_TIME_BASE_RATIONAL: Rational = Rational(1, AV_TIME_BASE);
-pub const MILLISEC_TIME_BASE: Rational = Rational(1, 1000);
+pub const MILLISECOND_TIME_BASE: Rational = Rational(1, 1000);
 /// if dont move the mouse for [MAX_DIFF_MOVE_MOUSE], then hide the status bar
 pub const MAX_DIFF_MOVE_MOUSE: i64 = 1000 * 5; // 5 seconds
