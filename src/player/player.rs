@@ -72,7 +72,7 @@ impl Player {
                             };
                             if l >= 4 * 1024 * 1024 * 1024 {
                                 2
-                            }else {
+                            } else {
                                 1
                             }
                         };
@@ -1171,7 +1171,7 @@ impl Player {
             } else {
                 "🔇"
             };
-            let icon_font_id = FontId{
+            let icon_font_id = FontId {
                 size: 16.0,
                 ..std::default::Default::default()
             };
@@ -1185,7 +1185,7 @@ impl Player {
 
             let duration_text_offset = vec2(25., text_y_offset);
             let duration_text_pos = full_seek_bar_rect.left_top() + duration_text_offset;
-            let duration_text_font_id = FontId{
+            let duration_text_font_id = FontId {
                 size: 14.0,
                 ..std::default::Default::default()
             };
