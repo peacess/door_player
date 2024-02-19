@@ -684,20 +684,16 @@ impl AppUi {
     }
     /// set the font to support chinese
     fn set_font(ctx: &egui::Context) {
-        static mut LOAD: bool = false;
-        if unsafe { !LOAD } {
-            let mut fonts = egui::FontDefinitions::default();
-            // let font_name = "OPPOSans".to_string();
-            // fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(include_bytes!("../assets/fonts/OPPOSans-B.ttf")));
-            let font_name = "文泉驿正黑".to_string();
-            let bs = include_bytes!("../assets/fonts/文泉驿正黑.ttc");
-            if !bs.is_empty() {
-                fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(bs));
-                fonts.families.get_mut(&egui::FontFamily::Proportional).expect("").insert(0, font_name.clone());
-                fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
-                ctx.set_fonts(fonts);
-            }
-            unsafe { LOAD = true; }
+        let mut fonts = egui::FontDefinitions::default();
+        // let font_name = "OPPOSans".to_string();
+        // fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(include_bytes!("../assets/fonts/OPPOSans-B.ttf")));
+        let font_name = "文泉驿正黑".to_string();
+        let bs = include_bytes!("../assets/fonts/文泉驿正黑.ttc");
+        if !bs.is_empty() {
+            fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(bs));
+            fonts.families.get_mut(&egui::FontFamily::Proportional).expect("").insert(0, font_name.clone());
+            fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
+            ctx.set_fonts(fonts);
         }
     }
 }
