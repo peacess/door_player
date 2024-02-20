@@ -66,7 +66,7 @@ impl Player {
                                 Err(_) => 1,
                                 Ok(t) => t.len()
                             };
-                            if l >= 4 * 1024 * 1024 * 1024 {
+                            if l >= 3 * 1024 * 1024 * 1024 {
                                 2
                             } else {
                                 1
@@ -106,15 +106,32 @@ impl Player {
             if let Some(audio_stream) = audio_stream {
                 let audio_index = audio_stream.index();
                 #[cfg(not(feature = "meh_ffmpeg"))]
-                    let audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
+                    let mut audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
                 #[cfg(feature = "meh_ffmpeg")]
                     let mut audio_context = ffmpeg::codec::context::Context::new();
                 {
                     #[cfg(feature = "meh_ffmpeg")]
                     audio_context.set_parameters(audio_stream.parameters());
 
-                    let thread_conf = audio_context.threading();
+                    let mut thread_conf = audio_context.threading();
                     log::info!("audio threads default : {:?}", &thread_conf);
+                    let thread_count = {
+                        let l = match fs::metadata(file) {
+                            Err(_) => 1,
+                            Ok(t) => t.len()
+                        };
+                        if l >= 3 * 1024 * 1024 * 1024 {
+                            2
+                        } else {
+                            1
+                        }
+                    };
+                    if thread_count > 1 {
+                        thread_conf.count = thread_count;
+                        thread_conf.kind = ffmpeg::threading::Type::Slice;
+                        log::info!("video threads new : {:?}", &thread_conf);
+                        audio_context.set_threading(thread_conf);
+                    }
                 }
                 let audio_decoder = audio_context.decoder().audio()?;
                 #[cfg(not(feature = "meh_ffmpeg"))]
@@ -176,7 +193,7 @@ impl Player {
                 let duration = video_input.duration().expect("");
 
             let play_ctrl = {
-                let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820).split();
+                let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820*2).split();
                 let audio_dev = Arc::new(AudioDevice::new(consumer)?);
                 audio_dev.resume();
                 PlayCtrl::new(duration, producer, audio_dev, texture_handle, video_stream_time_base, audio_stream_time_base)

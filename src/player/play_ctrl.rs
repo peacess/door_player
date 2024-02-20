@@ -222,10 +222,12 @@ impl PlayCtrl {
     }
     pub fn play_audio(&mut self, mut frame: AudioPlayFrame) -> Result<(), anyhow::Error> {
         let mut producer = self.producer.lock();
-        while producer.free_len() < frame.samples.len() {
-            // log::info!("play audio: for : {}", producer.free_len());
-            // spin_sleep::sleep(Duration::from_nanos(10));
-            std::thread::sleep(Duration::from_micros(1));
+        if producer.free_len() < frame.samples.len(){
+            log::info!("play audio: for : {}", producer.free_len());
+            while producer.free_len() < frame.samples.len() {
+                // spin_sleep::sleep(Duration::from_nanos(10));
+                std::thread::sleep(Duration::from_micros(1));
+            }
         }
         // log::info!("play audio out: {}", frame.samples.len());
         self.update_audio_clock(frame.pts, frame.duration);
@@ -233,17 +235,26 @@ impl PlayCtrl {
             frame.samples.as_mut_slice().fill(0.0);
         }
         let mut s = frame.samples.as_slice();
-        loop {
-            let done = producer.push_slice(s);
-            if done == s.len() {
-                break;
-            } else {
-                s = &s[done..];
-                std::thread::sleep(Duration::from_micros(1));
-                // spin_sleep::sleep(Duration::from_nanos(10));
+        let done = producer.push_slice(s);
+        if done == s.len() {
+            // log::info!("play audio done");
+        } else {
+            // log::info!("play audio not one ");
+            s = &s[done..];
+            std::thread::sleep(Duration::from_micros(1));
+            loop {
+                let done = producer.push_slice(s);
+                if done == s.len() {
+                    log::info!("play audio done");
+                    break;
+                } else {
+                    log::info!("play audio not one ");
+                    s = &s[done..];
+                    std::thread::sleep(Duration::from_micros(1));
+                    // spin_sleep::sleep(Duration::from_nanos(10));
+                }
             }
         }
-
         // spin_sleep::sleep(Duration::from_secs_f64(delay));
         Ok(())
     }
