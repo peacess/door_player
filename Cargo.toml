@@ -16,10 +16,11 @@ env_logger = "0.11"
 egui = { version = "0.26.2"}
 egui-wgpu = "*"
 wgpu = "*"
+winit = { version = "*", default-features = true }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
-eframe = { version = "0.26.2",default-features = true, features = ["wgpu"]}
+eframe = { version = "0.26.2",default-features = false, features = ["wgpu","wayland"]}
 
-rfd = "0.13"
+rfd = "0.14"
 ffmpeg-next = {version = "6.1.1", default-features = true}
 #ffmpeg-the-third = {version = "1.2.2+ffmpeg-6.0"}
 #rusty_ffmpeg = "0.13.1+ffmpeg.6.0"
