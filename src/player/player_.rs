@@ -193,7 +193,7 @@ impl Player {
                 let duration = video_input.duration().expect("");
 
             let play_ctrl = {
-                let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820*2).split();
+                let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820 * 2).split();
                 let audio_dev = Arc::new(AudioDevice::new(consumer)?);
                 audio_dev.resume();
                 PlayCtrl::new(duration, producer, audio_dev, texture_handle, video_stream_time_base, audio_stream_time_base)

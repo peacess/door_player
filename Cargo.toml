@@ -39,9 +39,10 @@ kanal = "0.1.0-pre8"
 
 chrono ="0.4"
 anyhow = "1.0"
+reqwest = { version = "0.11", features = ["blocking"] }
 
 [profile.dev]
-opt-level= 3
+#opt-level= 3
 
 [features]
 default = []
@@ -54,6 +55,3 @@ path="src/lib.rs"
 [[bin]]
 name="door_player"
 path="src/main.rs"
-
-[build-dependencies]
-reqwest = { version = "0.11", features = ["blocking"] }

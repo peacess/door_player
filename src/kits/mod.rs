@@ -3,3 +3,4 @@ pub use shared::*;
 
 mod shared;
 mod mutex_queue;
+pub mod fonts;

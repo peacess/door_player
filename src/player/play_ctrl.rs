@@ -222,8 +222,8 @@ impl PlayCtrl {
     }
     pub fn play_audio(&mut self, mut frame: AudioPlayFrame) -> Result<(), anyhow::Error> {
         let mut producer = self.producer.lock();
-        if producer.free_len() < frame.samples.len(){
-            log::info!("play audio: for : {}", producer.free_len());
+        if producer.free_len() < frame.samples.len() {
+            // log::info!("play audio: for : {}", producer.free_len());
             while producer.free_len() < frame.samples.len() {
                 // spin_sleep::sleep(Duration::from_nanos(10));
                 std::thread::sleep(Duration::from_micros(1));
