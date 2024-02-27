@@ -688,7 +688,7 @@ impl AppUi {
     }
     /// set the font to support chinese
     fn set_font(ctx: &egui::Context) {
-        let ctx = ctx.clone();
+        let ctx: egui::Context = ctx.clone();
         std::thread::spawn(move || {
             let font_file = {
                 match kits::fonts::get_font() {
@@ -700,8 +700,6 @@ impl AppUi {
                 }
             };
             let mut fonts = egui::FontDefinitions::default();
-            // let font_name = "OPPOSans".to_string();
-            // fonts.font_data.insert(font_name.clone(), egui::FontData::from_static(include_bytes!("../assets/fonts/OPPOSans-B.ttf")));
             let font_name = String::from(font_file.file_stem().expect("").to_string_lossy());
             let bs = match fs::read(font_file) {
                 Err(e) => {
@@ -714,9 +712,24 @@ impl AppUi {
                 fonts.font_data.insert(font_name.clone(), egui::FontData::from_owned(bs));
                 fonts.families.get_mut(&egui::FontFamily::Proportional).expect("").insert(0, font_name.clone());
                 fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
-                ctx.set_fonts(fonts);
+                if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    ctx.set_fonts(fonts);
+                    return 0;
+                })) {
+                    log::error!("{:?}", e);
+                }
             }
         });
+        // let mut fonts = egui::FontDefinitions::default();
+        // let font_name = "文泉驿正黑".to_string();
+        // // let bs = include_bytes!("../assets/fonts/文泉驿正黑.ttc");
+        // let bs = fs::read("/home/peace/gopath/src/peacess/door_player/assets/fonts/文泉驿正黑.ttc").expect("");
+        // if !bs.is_empty() {
+        //     fonts.font_data.insert(font_name.clone(), egui::FontData::from_owned(bs.to_vec()));
+        //     fonts.families.get_mut(&egui::FontFamily::Proportional).expect("").insert(0, font_name.clone());
+        //     fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
+        //     ctx.set_fonts(fonts);
+        // }
     }
 }
 
