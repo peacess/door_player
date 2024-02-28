@@ -1,12 +1,12 @@
-use std::{fs, path};
 use std::default::Default;
 use std::path::PathBuf;
+use std::{fs, path};
 
 use eframe::Theme;
 
-use crate::{kits, player};
 use crate::kits::Shared;
-use crate::player::{CommandGo, CommandUi, kits::FfmpegKit, Player, PlayerState};
+use crate::player::{kits::FfmpegKit, CommandGo, CommandUi, Player, PlayerState};
+use crate::{kits, player};
 
 pub struct AppUi {
     collapse: bool,
@@ -29,8 +29,10 @@ impl AppUi {
                 if self.no_scale {
                     egui::Vec2::new(player.width as f32, player.height as f32)
                 } else {
-                    AppUi::compute_player_size(egui::Vec2::new(player.width as f32, player.height as f32),
-                                               egui::Vec2::new(ui.min_rect().width(), ui.min_rect().height()))
+                    AppUi::compute_player_size(
+                        egui::Vec2::new(player.width as f32, player.height as f32),
+                        egui::Vec2::new(ui.min_rect().width(), ui.min_rect().height()),
+                    )
                 }
             };
             ui.centered_and_justified(|ui| {
@@ -39,7 +41,10 @@ impl AppUi {
 
             ui.input(|k| {
                 for e in &k.events {
-                    if let egui::Event::Key { key, pressed: true, modifiers, .. } = e {
+                    if let egui::Event::Key {
+                        key, pressed: true, modifiers, ..
+                    } = e
+                    {
                         match key {
                             egui::Key::Escape => {
                                 self.command_ui.set(CommandUi::Close);
@@ -134,15 +139,27 @@ impl AppUi {
             let mut is_open = false;
             'EVENTS: for e in &k.events {
                 match e {
-                    egui::Event::Key { key: egui::Key::Space, pressed: true, .. } => {
+                    egui::Event::Key {
+                        key: egui::Key::Space,
+                        pressed: true,
+                        ..
+                    } => {
                         is_open = true;
                         break 'EVENTS;
                     }
-                    egui::Event::PointerButton { button: egui::PointerButton::Primary, pressed: false, .. } => {
+                    egui::Event::PointerButton {
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        ..
+                    } => {
                         is_open = true;
                         break 'EVENTS;
                     }
-                    egui::Event::Key { key: egui::Key::Escape, pressed: true, .. } => {
+                    egui::Event::Key {
+                        key: egui::Key::Escape,
+                        pressed: true,
+                        ..
+                    } => {
                         self.command_ui.set(CommandUi::Close);
                         break 'EVENTS;
                     }
@@ -166,7 +183,7 @@ impl AppUi {
         let mut files = Vec::new();
         match fs::read_dir(path_file.parent().unwrap()) {
             Err(e) => {
-                log::error!("{}",e);
+                log::error!("{}", e);
                 return String::default();
             }
             Ok(read_dir) => {
@@ -199,7 +216,7 @@ impl AppUi {
         let mut files = Vec::new();
         match fs::read_dir(path_file.parent().unwrap()) {
             Err(e) => {
-                log::error!("{}",e);
+                log::error!("{}", e);
                 return String::default();
             }
             Ok(read_dir) => {
@@ -243,9 +260,7 @@ impl AppUi {
             }
             return;
         }
-        let view = ctx.input(|c| {
-            c.viewport().clone()
-        });
+        let view = ctx.input(|c| c.viewport().clone());
         match cmd {
             CommandUi::None => {}
             CommandUi::FullscreenToggle => {
@@ -283,153 +298,149 @@ impl AppUi {
         }
 
         let title_bar_height = 32.0;
-        egui::TopBottomPanel::top("title_bar_frame").frame(frame).show_separator_line(false).exact_height(title_bar_height).show(ctx, |ui| {
-            let title_bar_rect = {
-                let mut rect = ui.max_rect();
-                rect.max.y = rect.min.y + title_bar_height;
-                rect
-            };
-            let title_bar_response = ui.interact(title_bar_rect, egui::Id::new("title_bar"), egui::Sense::click_and_drag());
+        egui::TopBottomPanel::top("title_bar_frame")
+            .frame(frame)
+            .show_separator_line(false)
+            .exact_height(title_bar_height)
+            .show(ctx, |ui| {
+                let title_bar_rect = {
+                    let mut rect = ui.max_rect();
+                    rect.max.y = rect.min.y + title_bar_height;
+                    rect
+                };
+                let title_bar_response = ui.interact(title_bar_rect, egui::Id::new("title_bar"), egui::Sense::click_and_drag());
 
-            ui.painter().text(
-                title_bar_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                &self.title,
-                egui::FontId::proportional(16.0),
-                ui.style().visuals.text_color(),
-            );
+                ui.painter().text(
+                    title_bar_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    &self.title,
+                    egui::FontId::proportional(16.0),
+                    ui.style().visuals.text_color(),
+                );
 
-            if title_bar_response.double_clicked() {
-                //the double click do not work,why?
-                let is_full = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_full));
-            } else if title_bar_response.is_pointer_button_down_on() {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            }
+                if title_bar_response.double_clicked() {
+                    //the double click do not work,why?
+                    let is_full = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_full));
+                } else if title_bar_response.is_pointer_button_down_on() {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                }
 
-            ui.allocate_ui_at_rect(title_bar_rect, |ui| {
-                let button_height = 16.0;
-                let space = 8.0;
-                let close_text = " ❌ ";
-                let maximize_text = " 🗖 ";
-                let minimize_text = " 🗕 ";
-                let restore_text = " 🗗 ";
-                ui.columns(2, |cols| {
-                    cols.get_mut(0).expect("").with_layout(Layout::left_to_right(Align::Center), |ui| {
-                        ui.visuals_mut().button_frame = false;
-                        ui.add_space(space);
-                        let close_response = ui
-                            .add(Button::new(RichText::new(close_text).size(button_height)))
-                            .on_hover_text("Close the window");
-                        if close_response.clicked() {
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-
-                        let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                        if is_maximized {
-                            let maximized_response = ui
-                                .add(Button::new(RichText::new(restore_text).size(button_height)))
-                                .on_hover_text("Restore window");
-                            if maximized_response.clicked() {
-                                ui.ctx()
-                                    .send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                ui.allocate_ui_at_rect(title_bar_rect, |ui| {
+                    let button_height = 16.0;
+                    let space = 8.0;
+                    let close_text = " ❌ ";
+                    let maximize_text = " 🗖 ";
+                    let minimize_text = " 🗕 ";
+                    let restore_text = " 🗗 ";
+                    ui.columns(2, |cols| {
+                        cols.get_mut(0).expect("").with_layout(Layout::left_to_right(Align::Center), |ui| {
+                            ui.visuals_mut().button_frame = false;
+                            ui.add_space(space);
+                            let close_response = ui
+                                .add(Button::new(RichText::new(close_text).size(button_height)))
+                                .on_hover_text("Close the window");
+                            if close_response.clicked() {
+                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                             }
-                        } else {
-                            let maximized_response = ui
-                                .add(Button::new(RichText::new(maximize_text).size(button_height)))
-                                .on_hover_text("Maximize window");
-                            if maximized_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                            }
-                        }
 
-                        let minimized_response = ui
-                            .add(Button::new(RichText::new(minimize_text).size(button_height)))
-                            .on_hover_text("Minimize the window");
-                        if minimized_response.clicked() {
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                        }
-                    });
-                    cols.get_mut(1).expect("").with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.visuals_mut().button_frame = false;
-                        ui.add_space(space);
-                        let close_response = ui
-                            .add(Button::new(RichText::new(close_text).size(button_height)))
-                            .on_hover_text("Close the window");
-                        if close_response.clicked() {
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                        }
-
-                        let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                        if is_maximized {
-                            let maximized_response = ui
-                                .add(Button::new(RichText::new(restore_text).size(button_height)))
-                                .on_hover_text("Restore window");
-                            if maximized_response.clicked() {
-                                ui.ctx()
-                                    .send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                            let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                            if is_maximized {
+                                let maximized_response = ui
+                                    .add(Button::new(RichText::new(restore_text).size(button_height)))
+                                    .on_hover_text("Restore window");
+                                if maximized_response.clicked() {
+                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                                }
+                            } else {
+                                let maximized_response = ui
+                                    .add(Button::new(RichText::new(maximize_text).size(button_height)))
+                                    .on_hover_text("Maximize window");
+                                if maximized_response.clicked() {
+                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+                                }
                             }
-                        } else {
-                            let maximized_response = ui
-                                .add(Button::new(RichText::new(maximize_text).size(button_height)))
-                                .on_hover_text("Maximize window");
-                            if maximized_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                            }
-                        }
 
-                        let minimized_response = ui
-                            .add(Button::new(RichText::new(minimize_text).size(button_height)))
-                            .on_hover_text("Minimize the window");
-                        if minimized_response.clicked() {
-                            ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                        }
+                            let minimized_response = ui
+                                .add(Button::new(RichText::new(minimize_text).size(button_height)))
+                                .on_hover_text("Minimize the window");
+                            if minimized_response.clicked() {
+                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                            }
+                        });
+                        cols.get_mut(1).expect("").with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.visuals_mut().button_frame = false;
+                            ui.add_space(space);
+                            let close_response = ui
+                                .add(Button::new(RichText::new(close_text).size(button_height)))
+                                .on_hover_text("Close the window");
+                            if close_response.clicked() {
+                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                            }
+
+                            let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
+                            if is_maximized {
+                                let maximized_response = ui
+                                    .add(Button::new(RichText::new(restore_text).size(button_height)))
+                                    .on_hover_text("Restore window");
+                                if maximized_response.clicked() {
+                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                                }
+                            } else {
+                                let maximized_response = ui
+                                    .add(Button::new(RichText::new(maximize_text).size(button_height)))
+                                    .on_hover_text("Maximize window");
+                                if maximized_response.clicked() {
+                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+                                }
+                            }
+
+                            let minimized_response = ui
+                                .add(Button::new(RichText::new(minimize_text).size(button_height)))
+                                .on_hover_text("Minimize the window");
+                            if minimized_response.clicked() {
+                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                            }
+                        });
                     });
                 });
             });
-        });
     }
     fn main_frame(&mut self, ctx: &egui::Context, frame: egui::Frame) {
         self.right_panel(ctx, frame);
-        egui::CentralPanel::default().frame(frame)
-            .show(ctx, |ui| {
-                {
-                    let file = ui.input(|s| {
-                        match s.raw.dropped_files.first() {
-                            Some(egui::DroppedFile { path: Some(first), .. }) => {
-                                Some(first.clone())
-                            }
-                            _ => None
-                        }
-                    });
-                    if let Some(f) = file {
-                        self.open_file(ctx, f);
-                    }
+        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+            {
+                let file = ui.input(|s| match s.raw.dropped_files.first() {
+                    Some(egui::DroppedFile { path: Some(first), .. }) => Some(first.clone()),
+                    _ => None,
+                });
+                if let Some(f) = file {
+                    self.open_file(ctx, f);
                 }
-                if self.player.is_some() {
-                    self.handle_key_player(ui, ctx);
-                }
-                let none = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+            }
+            if self.player.is_some() {
+                self.handle_key_player(ui, ctx);
+            }
+            let none = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
 
-                let rect = {
-                    const WIDTH: f32 = 30.0;
-                    let right_center = egui::Pos2 {
-                        x: ui.min_rect().right() - WIDTH / 2.0,
-                        y: ui.min_rect().center().y,
-                    };
-                    egui::Rect::from_center_size(right_center, egui::Vec2::splat(WIDTH))
+            let rect = {
+                const WIDTH: f32 = 30.0;
+                let right_center = egui::Pos2 {
+                    x: ui.min_rect().right() - WIDTH / 2.0,
+                    y: ui.min_rect().center().y,
                 };
-                let button = ui.put(rect, egui::Button::new(self.collapse_str()).small());
-                if button.clicked() {
-                    self.collapse = !self.collapse;
-                }
+                egui::Rect::from_center_size(right_center, egui::Vec2::splat(WIDTH))
+            };
+            let button = ui.put(rect, egui::Button::new(self.collapse_str()).small());
+            if button.clicked() {
+                self.collapse = !self.collapse;
+            }
 
-                if !button.hovered() && self.player.is_none() && none.hovered() {
-                    self.handle_key_no_player(ui, ctx);
-                }
-            });
+            if !button.hovered() && self.player.is_none() && none.hovered() {
+                self.handle_key_no_player(ui, ctx);
+            }
+        });
     }
-
 
     fn select_file() -> Option<PathBuf> {
         let names = FfmpegKit::demuxers();
@@ -463,7 +474,8 @@ impl AppUi {
 
     fn right_panel(&mut self, ctx: &egui::Context, frame: egui::Frame) {
         if !self.collapse {
-            egui::SidePanel::right("right_panel").frame(frame)
+            egui::SidePanel::right("right_panel")
+                .frame(frame)
                 .min_width(0.0)
                 .resizable(true)
                 .show(ctx, |ui| {
@@ -636,7 +648,7 @@ impl AppUi {
     fn collapse_str(&self) -> &'static str {
         match self.collapse {
             true => "<",
-            false => ">"
+            false => ">",
         }
     }
 
@@ -661,8 +673,7 @@ impl AppUi {
             ..Default::default()
         };
 
-        let re = eframe::run_native(title, ops,
-                                    Box::new(|cc| Box::new(AppUi::new(cc, title))), );
+        let re = eframe::run_native(title, ops, Box::new(|cc| Box::new(AppUi::new(cc, title))));
         if let Err(e) = re {
             log::error!("{:?}", e);
         }
@@ -696,7 +707,7 @@ impl AppUi {
                         log::error!("{}", e);
                         return;
                     }
-                    Ok(p) => p
+                    Ok(p) => p,
                 }
             };
             let mut fonts = egui::FontDefinitions::default();
@@ -706,7 +717,7 @@ impl AppUi {
                     log::error!("{}", e);
                     return;
                 }
-                Ok(t) => t
+                Ok(t) => t,
             };
             if !bs.is_empty() {
                 fonts.font_data.insert(font_name.clone(), egui::FontData::from_owned(bs));

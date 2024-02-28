@@ -23,11 +23,7 @@ impl Debug for SubtitlePlayFrame {
 }
 
 impl SubtitlePlayFrame {
-    pub fn new(
-        sub_text: String,
-        pts: f64,
-        duration: i64,
-    ) -> Self {
+    pub fn new(sub_text: String, pts: f64, duration: i64) -> Self {
         Self {
             pure_text: sub_text,
             pts,

@@ -21,13 +21,7 @@ impl Debug for VideoPlayFrame {
 }
 
 impl VideoPlayFrame {
-    pub fn new(
-        color_image: egui::ColorImage,
-        width: usize,
-        height: usize,
-        pts: i64,
-        duration: i64,
-    ) -> Self {
+    pub fn new(color_image: egui::ColorImage, width: usize, height: usize, pts: i64, duration: i64) -> Self {
         Self {
             color_image,
             width,

@@ -1,7 +1,7 @@
 use std::sync::atomic::Ordering;
 
-use cpal::SupportedStreamConfig;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::SupportedStreamConfig;
 
 use crate::player::kits::RingBufferConsumer;
 
@@ -15,13 +15,7 @@ pub struct AudioPlayFrame {
 }
 
 impl AudioPlayFrame {
-    pub fn new(
-        samples: Vec<f32>,
-        channels: u16,
-        sample_rate: u32,
-        pts: i64,
-        duration: i64,
-    ) -> Self {
+    pub fn new(samples: Vec<f32>, channels: u16, sample_rate: u32, pts: i64, duration: i64) -> Self {
         Self {
             samples,
             channels,
@@ -65,16 +59,21 @@ impl AudioDevice {
                             log::error!("No supported output config");
                             return Err(ffmpeg::Error::OptionNotFound.into());
                         }
-                        Some(c) => c.with_max_sample_rate()
+                        Some(c) => c.with_max_sample_rate(),
                     }
                 }
             }
         };
-        let stream = device.build_output_stream(&output_config.clone().into(), move |data: &mut [T], info| {
-            Self::write_audio(data, &mut consumer, info);
-        }, |e| {
-            log::error!("{}", e);
-        }, None)?;
+        let stream = device.build_output_stream(
+            &output_config.clone().into(),
+            move |data: &mut [T], info| {
+                Self::write_audio(data, &mut consumer, info);
+            },
+            |e| {
+                log::error!("{}", e);
+            },
+            None,
+        )?;
 
         Ok(Self {
             stream,

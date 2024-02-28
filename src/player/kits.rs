@@ -1,8 +1,8 @@
-use std::{fs, path};
 use std::collections::HashSet;
 use std::ffi::{c_void, CStr};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::{fs, path};
 
 use ffmpeg::{Rational, Rescale};
 use ringbuf::HeapRb;
@@ -13,10 +13,7 @@ pub type RingBufferProducer<T> = ringbuf::Producer<T, Arc<HeapRb<T>>>;
 pub type RingBufferConsumer<T> = ringbuf::Consumer<T, Arc<HeapRb<T>>>;
 
 pub fn is_ffmpeg_eof_error(error: &anyhow::Error) -> bool {
-    matches!(
-        error.downcast_ref::<ffmpeg::Error>(),
-        Some(ffmpeg::Error::Eof)
-    )
+    matches!(error.downcast_ref::<ffmpeg::Error>(), Some(ffmpeg::Error::Eof))
 }
 
 pub fn timestamp_to_millisecond(timestamp: i64, time_base: Rational) -> i64 {
@@ -101,7 +98,7 @@ impl SubTitle {
         }
         match fs::read_dir(path_file.parent().unwrap()) {
             Err(e) => {
-                log::error!("{}",e);
+                log::error!("{}", e);
                 return subs;
             }
             Ok(read_dir) => {
@@ -126,7 +123,6 @@ impl SubTitle {
         subs
     }
 }
-
 
 #[cfg(test)]
 mod test {

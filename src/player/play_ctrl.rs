@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytemuck::NoUninit;
@@ -8,10 +8,13 @@ use parking_lot::Mutex;
 use ringbuf::SharedRb;
 
 use crate::kits::Shared;
-use crate::player::{AV_TIME_BASE_RATIONAL, CommandGo, kits::{RingBufferProducer, timestamp_to_millisecond}, VIDEO_SYNC_THRESHOLD_MIN};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::VIDEO_SYNC_THRESHOLD_MAX;
 use crate::player::video::VideoPlayFrame;
+use crate::player::{
+    kits::{timestamp_to_millisecond, RingBufferProducer},
+    CommandGo, AV_TIME_BASE_RATIONAL, VIDEO_SYNC_THRESHOLD_MIN,
+};
 
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum PlayerState {
@@ -46,10 +49,7 @@ pub struct Clock {
 
 impl Clock {
     fn new(q2d: f64) -> Self {
-        Self {
-            q2d,
-            ..Default::default()
-        }
+        Self { q2d, ..Default::default() }
     }
 
     pub fn play_ts(&self, frames: i64) -> f64 {
@@ -109,7 +109,8 @@ impl PlayCtrl {
         producer: ringbuf::Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
         audio_dev: Arc<AudioDevice>,
         texture_handle: egui::TextureHandle,
-        video_stream_time_base: Option<ffmpeg::Rational>, audio_stream_time_base: Option<ffmpeg::Rational>,
+        video_stream_time_base: Option<ffmpeg::Rational>,
+        audio_stream_time_base: Option<ffmpeg::Rational>,
     ) -> Self {
         let demux_finished = Arc::new(AtomicBool::new(false));
         let audio_finished = Arc::new(AtomicBool::new(false));
@@ -117,14 +118,14 @@ impl PlayCtrl {
         let video_clock = {
             let q2d = match video_stream_time_base {
                 None => 0.0,
-                Some(t) => f64::from(t)
+                Some(t) => f64::from(t),
             };
             Arc::new(Clock::new(q2d))
         };
         let audio_clock = {
             let q2d = match audio_stream_time_base {
                 None => 0.0,
-                Some(t) => f64::from(t)
+                Some(t) => f64::from(t),
             };
             Arc::new(Clock::new(q2d))
         };

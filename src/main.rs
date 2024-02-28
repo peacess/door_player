@@ -4,8 +4,8 @@ use std::io::Write;
 
 use env_logger::Env;
 
-use door_player::AppUi;
 use door_player::ffmpeg;
+use door_player::AppUi;
 
 fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
@@ -25,6 +25,6 @@ fn main() {
         log::error!("{}", e);
         return;
     }
-    log::info!("ffmpeg version : {:?}",unsafe {std::ffi::CStr::from_ptr(ffmpeg::ffi::av_version_info()) });
+    log::info!("ffmpeg version : {:?}", unsafe { std::ffi::CStr::from_ptr(ffmpeg::ffi::av_version_info()) });
     AppUi::run_app();
 }

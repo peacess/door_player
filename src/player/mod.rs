@@ -6,11 +6,11 @@ pub use player_::*;
 pub use subtitle::*;
 pub use video::*;
 
-pub mod kits;
-mod player_;
-mod video;
-mod play_ctrl;
 mod audio;
-mod consts;
 mod command;
+mod consts;
+pub mod kits;
+mod play_ctrl;
+mod player_;
 mod subtitle;
+mod video;
