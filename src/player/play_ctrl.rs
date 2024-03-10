@@ -72,6 +72,10 @@ impl Clock {
     pub fn timestamp(&self) -> f64 {
         self.timestamp.load(Ordering::Relaxed) as f64 / ffmpeg::sys::AV_TIME_BASE as f64
     }
+
+    pub fn play_duration(&self) -> f64 {
+        self.play_duration.load(Ordering::Relaxed)
+    }
 }
 
 #[derive(Clone)]
@@ -300,17 +304,40 @@ impl PlayCtrl {
         self.compute_video_delay()
     }
 
+    fn compute_video_delay(&self) -> f64 {
+        let cache_frame = self.producer.lock().len() as i64 / 2000 + 2;
+        let audio_clock = self.audio_clock.play_ts(cache_frame);
+        let (video_clock, duration) = self.video_clock.play_ts_duration();
+        let diff = video_clock - audio_clock;
+        if audio_clock == 0.0 || video_clock == 0.0 {
+            duration
+        } else if diff <= VIDEO_SYNC_THRESHOLD_MIN {
+            // 视频时钟落后于音频时钟, 超过了最小阈值
+            // 在原来的duration基础上, 减少一定的休眠时间, 来达到追赶播放的目的 (最小休眠时间是0)
+            0.0f64.max(duration + diff)
+        }
+        // 视频时钟超前于音频时钟, 且超过了最大阈值
+        else if diff >= VIDEO_SYNC_THRESHOLD_MAX {
+            // 放慢播放速度, 增加一定的休眠时间
+            duration + VIDEO_SYNC_THRESHOLD_MAX
+            // diff
+        }
+        // 满足阈值范围, 则 正常的延迟时间
+        else {
+            // 0.0
+            duration
+        }
+    }
+
     // fn compute_video_delay(&self) -> f64 {
-    //     let cache_frame = self.producer.lock().len() as i64 / 2000 + 2;
-    //     let audio_clock = self.audio_clock.play_ts(cache_frame);
-    //     let (video_clock, duration) = self.video_clock.play_ts_duration();
+    //     let audio_clock = self.audio_clock.timestamp();
+    //     let video_clock = self.video_clock.timestamp();
     //     let diff = video_clock - audio_clock;
-    //     if audio_clock == 0.0 || video_clock == 0.0 {
-    //         duration
-    //     } else if diff <= VIDEO_SYNC_THRESHOLD_MIN {
+    //     let duration = self.video_clock.play_duration();
+    //     if diff <= VIDEO_SYNC_THRESHOLD_MIN {
     //         // 视频时钟落后于音频时钟, 超过了最小阈值
     //         // 在原来的duration基础上, 减少一定的休眠时间, 来达到追赶播放的目的 (最小休眠时间是0)
-    //         0.0f64.max(duration + diff)
+    //         0.0f64.max(diff + duration)
     //     }
     //     // 视频时钟超前于音频时钟, 且超过了最大阈值
     //     else if diff >= VIDEO_SYNC_THRESHOLD_MAX {
@@ -320,30 +347,7 @@ impl PlayCtrl {
     //     }
     //     // 满足阈值范围, 则 正常的延迟时间
     //     else {
-    //         // 0.0
     //         duration
     //     }
     // }
-
-    fn compute_video_delay(&self) -> f64 {
-        let audio_clock = self.audio_clock.timestamp();
-        let video_clock = self.video_clock.timestamp();
-        let diff = video_clock - audio_clock;
-        if diff <= VIDEO_SYNC_THRESHOLD_MIN {
-            // 视频时钟落后于音频时钟, 超过了最小阈值
-            // 在原来的duration基础上, 减少一定的休眠时间, 来达到追赶播放的目的 (最小休眠时间是0)
-            0.0f64.max(diff)
-        }
-        // 视频时钟超前于音频时钟, 且超过了最大阈值
-        else if diff >= VIDEO_SYNC_THRESHOLD_MAX {
-            // 放慢播放速度, 增加一定的休眠时间
-            VIDEO_SYNC_THRESHOLD_MAX
-            // diff
-        }
-        // 满足阈值范围, 则 正常的延迟时间
-        else {
-            // 0.0
-            diff
-        }
-    }
 }
