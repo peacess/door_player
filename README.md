@@ -80,4 +80,5 @@ get the download url from github url:
 [将音视频时钟同步封装成通用模块](https://blog.csdn.net/u013113678/article/details/126898738)  
 [FFmpeg 入门(5)：视频同步](https://www.samirchen.com/ffmpeg-tutorial-5/)  
 [FFMPEG 硬件解码API介绍](https://zhuanlan.zhihu.com/p/168240163)
+[ffmpeg 时基timebase、时间戳pts/dts、延时控制delay](https://blog.csdn.net/wanggao_1990/article/details/114067251)
 

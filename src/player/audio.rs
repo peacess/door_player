@@ -12,19 +12,20 @@ pub struct AudioPlayFrame {
     pub sample_rate: u32,
     pub pts: i64,
     pub duration: i64,
+    pub timestamp: i64,
 }
 
-impl AudioPlayFrame {
-    pub fn new(samples: Vec<f32>, channels: u16, sample_rate: u32, pts: i64, duration: i64) -> Self {
-        Self {
-            samples,
-            channels,
-            sample_rate,
-            pts,
-            duration,
-        }
-    }
-}
+// impl AudioPlayFrame {
+//     pub fn new(samples: Vec<f32>, channels: u16, sample_rate: u32, pts: i64, duration: i64) -> Self {
+//         Self {
+//             samples,
+//             channels,
+//             sample_rate,
+//             pts,
+//             duration,
+//         }
+//     }
+// }
 
 impl std::fmt::Debug for AudioPlayFrame {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

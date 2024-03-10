@@ -8,4 +8,4 @@ clean:
 upgrade:
 	cargo upgrade --incompatible
 format:
-	cargo fmt
+	cargo +nightly-gnu fmt

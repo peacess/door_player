@@ -102,7 +102,9 @@ impl Player {
         // let video_input = ffmpeg::format::input(&path::Path::new(file))?;
         // 获取音频解码器
         let (audio_index, audio_decoder, audio_stream_time_base) = {
-            let audio_stream = video_input.streams().best(ffmpeg::media::Type::Audio);
+            // let audio_input = ffmpeg::format::input(&path::Path::new(file))?;
+            let audio_input = &video_input;
+            let audio_stream = audio_input.streams().best(ffmpeg::media::Type::Audio);
             if let Some(audio_stream) = audio_stream {
                 let audio_index = audio_stream.index();
                 #[cfg(not(feature = "meh_ffmpeg"))]
@@ -504,6 +506,7 @@ impl Player {
                                 sample_rate: frame_resample.rate(),
                                 pts,
                                 duration,
+                                timestamp: frame_old.timestamp().unwrap_or_default(),
                             };
                             #[cfg(feature = "meh_ffmpeg")]
                             let audio_frame = AudioPlayFrame {
@@ -725,6 +728,7 @@ impl Player {
                         height,
                         pts,
                         duration,
+                        timestamp: frame.timestamp().unwrap_or_default(),
                         color_image,
                     };
                     if let Err(e) = video_play_sender.send(video_frame) {
