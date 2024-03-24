@@ -20,7 +20,7 @@ Features:
    * Ctrl + Tab -> save current position for "Tab"
 7. Autoplay next file
 8. Decode threads by file size
-9. Other
+9. Other  
 
 # build
 [ffmpeg](https://github.com/zmwangx/rust-ffmpeg/wiki/Notes-on-building)  
@@ -73,12 +73,15 @@ get the download url from github url:
 [stainless-ffmpeg](https://github.com/nomalab/stainless-ffmpeg/blob/master/examples/play.rs)  
 [ffplay源码分析](https://www.cnblogs.com/leisure_chn/p/10301215.html)  
 [ffplay源码分析4-音视频同步](https://www.cnblogs.com/leisure_chn/p/10307089.html)  
+[FFplay视频同步分析—ffplay.c源码分析](https://ffmpeg.xianwaizhiyin.net/ffplay/video_sync.html)  
 [ffplay](https://ffmpeg.org/ffplay.html)  
 [ffmpeg](https://ffmpeg.org/)  
 [ffmpeg播放器](https://www.cnblogs.com/leisure_chn/p/10047035.html)  
 [学习如何使用 FFmpeg 打造自己的播放器](https://cloud.tencent.com/developer/article/1940943)  
 [将音视频时钟同步封装成通用模块](https://blog.csdn.net/u013113678/article/details/126898738)  
 [FFmpeg 入门(5)：视频同步](https://www.samirchen.com/ffmpeg-tutorial-5/)  
-[FFMPEG 硬件解码API介绍](https://zhuanlan.zhihu.com/p/168240163)
-[ffmpeg 时基timebase、时间戳pts/dts、延时控制delay](https://blog.csdn.net/wanggao_1990/article/details/114067251)
+[FFMPEG 硬件解码API介绍](https://zhuanlan.zhihu.com/p/168240163)  
+[ffmpeg 时基timebase、时间戳pts/dts、延时控制delay](https://blog.csdn.net/wanggao_1990/article/details/114067251)  
+[FFmpeg DTS、PTS和时间戳TIME_BASE详解](https://blog.csdn.net/aiynmimi/article/details/121231246)  
+
 
