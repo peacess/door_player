@@ -66,6 +66,11 @@ get the download url from github url:
    download url: https://wordshub.github.io/free-font/assets/font/%E4%B8%AD%E6%96%87/%E6%96%87%E6%B3%89%E9%A9%BF%E7%B3%BB%E5%88%97/%E6%96%87%E6%B3%89%E9%A9%BF%E6%AD%A3%E9%BB%91.ttc  
    see: https://github.com/orgs/community/discussions/42655#discussioncomment-5669289  
    https://nvm-sh.github.io/nvm/blob/v0.39.5/install.sh  
+
+# symphonia 
+[see](https://github.com/pdeljanov/Symphonia)  
+Pure Rust media container and audio decoding library  
+
 # see
 [egui-video(player)](https://github.com/n00kii/egui-video)   First version of door player is base on this project   
 [small-player](https://github.com/imxood/small-player)   

@@ -5,7 +5,7 @@ use std::time::UNIX_EPOCH;
 use std::{fs, path};
 
 use chrono::{DateTime, Utc};
-use egui::{epaint::Shadow, load::SizedTexture, Ui};
+use egui::{load::SizedTexture, Ui, Visuals};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 
 use crate::kits::Shared;
@@ -1133,7 +1133,7 @@ impl Player {
                 .animate_bool_with_time(image_res.id.with("seek_indicator_anim"), currently_seeking, 0.1);
 
             if currently_seeking {
-                let mut seek_indicator_shadow = Shadow::big_dark();
+                let mut seek_indicator_shadow = Visuals::dark().window_shadow;
                 seek_indicator_shadow.color = seek_indicator_shadow.color.linear_multiply(seek_indicator_anim);
                 let spinner_size = 20. * seek_indicator_anim;
                 ui.painter().add(seek_indicator_shadow.tessellate(image_res.rect, egui::Rounding::ZERO));
@@ -1201,7 +1201,7 @@ impl Player {
                 ..std::default::Default::default()
             };
 
-            let mut shadow = Shadow::big_light();
+            let mut shadow = Visuals::light().window_shadow;
             shadow.color = shadow.color.linear_multiply(seekbar_anim_frac);
 
             let mut shadow_rect = image_res.rect;
