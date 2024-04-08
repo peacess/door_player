@@ -657,10 +657,6 @@ impl AppUi {
         let ops = eframe::NativeOptions {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
-            wgpu_options: egui_wgpu::WgpuConfiguration {
-                // supported_backends: wgpu::Backends::GL,
-                ..Default::default()
-            },
             follow_system_theme: false,
             default_theme: Theme::Dark,
             viewport: egui::ViewportBuilder {

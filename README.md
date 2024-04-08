@@ -28,14 +28,16 @@ Features:
 ## Ubuntu
 
 ```shell
-#   ffmpeg
-   sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg6  
+#   ffmpeg 7
+   sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg7 
    sudo apt update  
    sudo apt install libass-dev libavdevice-dev ffmpeg  
    
    note: if you want to downgrade to 6.0.  
-   sudo apt install ppa-purge && sudo ppa-purge ppa:ubuntuhandbook1/ffmpeg6  
-   sudo apt install ffmpeg  
+   sudo apt install ppa-purge && sudo ppa-purge ppa:ubuntuhandbook1/ffmpeg7
+   sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg6
+   sudo apt update  
+   sudo apt install libass-dev libavdevice-dev ffmpeg  
    
 #   dependencies
    sudo apt install librust-alsa-sys-dev
