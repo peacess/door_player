@@ -661,8 +661,8 @@ impl AppUi {
             default_theme: Theme::Dark,
             viewport: egui::ViewportBuilder {
                 title: Some(title.to_string()),
-                decorations: Some(false),
-                titlebar_shown: Some(false),
+                // decorations: Some(true),
+                // titlebar_shown: Some(false),
                 resizable: Some(true),
                 ..Default::default()
             },
@@ -744,7 +744,7 @@ impl eframe::App for AppUi {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_command_ui(ctx);
         let frame = egui::Frame::default();
-        self.title_bar(ctx, frame);
+        // self.title_bar(ctx, frame);
         self.main_frame(ctx, frame);
     }
 }
