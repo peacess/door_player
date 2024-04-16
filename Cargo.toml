@@ -34,8 +34,8 @@ atomic = "0.6.0"
 bytemuck = "1.15"
 kanal = "0.1.0-pre8"
 
-chrono ="0.4.37"
-anyhow = "1.0.81"
+chrono ="0.4.38"
+anyhow = "1.0.82"
 reqwest = { version = "0.12.3", features = ["blocking"] }
 
 [profile.dev]
