@@ -5,12 +5,13 @@ use std::sync::Arc;
 use std::{fs, path};
 
 use ffmpeg::{Rational, Rescale};
-use ringbuf::HeapRb;
+use ringbuf::storage::Heap;
+use ringbuf::SharedRb;
 
 use crate::player::MILLISECOND_TIME_BASE;
 
-pub type RingBufferProducer<T> = ringbuf::Producer<T, Arc<HeapRb<T>>>;
-pub type RingBufferConsumer<T> = ringbuf::Consumer<T, Arc<HeapRb<T>>>;
+pub type RingBufferProducer<T> = ringbuf::CachingProd<Arc<SharedRb<Heap<T>>>>;
+pub type RingBufferConsumer<T> = ringbuf::CachingCons<Arc<SharedRb<Heap<T>>>>;
 
 pub fn is_ffmpeg_eof_error(error: &anyhow::Error) -> bool {
     matches!(error.downcast_ref::<ffmpeg::Error>(), Some(ffmpeg::Error::Eof))

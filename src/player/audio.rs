@@ -2,6 +2,7 @@ use std::sync::atomic::Ordering;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SupportedStreamConfig;
+use ringbuf::traits::{Consumer, Observer};
 
 use crate::player::kits::RingBufferConsumer;
 
@@ -46,7 +47,7 @@ pub struct AudioDevice {
 }
 
 impl AudioDevice {
-    pub fn new<T: cpal::SizedSample + Send + 'static>(mut consumer: RingBufferConsumer<T>) -> Result<Self, anyhow::Error> {
+    pub fn new<T: cpal::SizedSample + Send + Sync + 'static>(mut consumer: RingBufferConsumer<T>) -> Result<Self, anyhow::Error> {
         let device = cpal::default_host().default_output_device().ok_or(ffmpeg::Error::OptionNotFound)?;
         let output_config = {
             match device.default_output_config() {

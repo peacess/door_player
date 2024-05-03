@@ -1,11 +1,10 @@
-use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
 use bytemuck::NoUninit;
 use parking_lot::Mutex;
-use ringbuf::SharedRb;
+use ringbuf::traits::{Observer, Producer};
 
 use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
@@ -116,7 +115,7 @@ pub struct PlayCtrl {
 impl PlayCtrl {
     pub fn new(
         duration: i64,
-        producer: ringbuf::Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
+        producer: RingBufferProducer<f32>,
         audio_dev: Arc<AudioDevice>,
         texture_handle: egui::TextureHandle,
         video_stream_time_base: Option<ffmpeg::Rational>,
@@ -233,9 +232,9 @@ impl PlayCtrl {
     }
     pub fn play_audio(&mut self, mut frame: AudioPlayFrame) -> Result<(), anyhow::Error> {
         let mut producer = self.producer.lock();
-        if producer.free_len() < frame.samples.len() {
+        if producer.vacant_len() < frame.samples.len() {
             // log::info!("play audio: for : {}", producer.free_len());
-            while producer.free_len() < frame.samples.len() {
+            while producer.vacant_len() < frame.samples.len() {
                 // spin_sleep::sleep(Duration::from_nanos(10));
                 std::thread::sleep(Duration::from_micros(1));
             }
@@ -305,7 +304,7 @@ impl PlayCtrl {
     }
 
     fn compute_video_delay(&self) -> f64 {
-        let cache_frame = self.producer.lock().len() as i64 / 2000 + 2;
+        let cache_frame = self.producer.lock().occupied_len() as i64 / 2000 + 2;
         let audio_clock = self.audio_clock.play_ts(cache_frame);
         let (video_clock, duration) = self.video_clock.play_ts_duration();
         let diff = video_clock - audio_clock;
