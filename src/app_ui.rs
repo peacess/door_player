@@ -480,6 +480,11 @@ impl AppUi {
                 .resizable(true)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
+                        if ui.button("Exit").clicked() {
+                            self.command_ui.set(CommandUi::Close);
+                        }
+                    });
+                    ui.horizontal(|ui| {
                         if ui.button("Open").clicked() {
                             if let Some(buf) = Self::select_file() {
                                 self.open_file(ctx, buf);
@@ -494,6 +499,11 @@ impl AppUi {
                     ui.checkbox(&mut self.no_scale, "no scale");
 
                     if !self.media_path.is_empty() {
+                        ui.horizontal(|ui| {
+                            if ui.button("Full Screen").clicked() {
+                                self.command_ui.set(CommandUi::FullscreenToggle);
+                            }
+                        });
                         ui.label(self.media_path.clone());
                         ui.horizontal(|ui| {
                             if ui.button("Pre file").clicked() {
