@@ -652,13 +652,13 @@ impl AppUi {
         let ops = eframe::NativeOptions {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
-            follow_system_theme: false,
+            // follow_system_theme: false,
             default_theme: Theme::Dark,
             viewport: egui::ViewportBuilder {
                 title: Some(title.to_string()),
                 // decorations: Some(true),
-                // titlebar_shown: Some(false),
                 resizable: Some(true),
+                active: Some(true),
                 window_level: Some(egui::WindowLevel::AlwaysOnTop),
                 ..Default::default()
             },
