@@ -1,6 +1,6 @@
 [package]
 name = "door_player"
-version = "0.3.9"
+version = "0.3.10"
 edition = "2021"
 authors = ["Andy <peacess@163.com>"]
 description = "Door Player, Cross by ffmpeg and egui"
@@ -18,7 +18,7 @@ egui = { version = "0.27.2"}
 eframe = { version = "0.27.2",default-features = false, features = ["wgpu","wayland","web_screen_reader","x11"]}
 
 rfd = "0.14.1"
-ffmpeg-next = {version = "7.0.0", default-features = true}
+ffmpeg-next = {version = "7.0.1", default-features = true}
 #ffmpeg-the-third = {version = "1.2.2+ffmpeg-6.0"}
 #rusty_ffmpeg = "0.13.1+ffmpeg.6.0"
 
@@ -34,11 +34,11 @@ bytemuck = "1.15"
 kanal = "0.1.0-pre8"
 
 chrono ="0.4.38"
-anyhow = "1.0.82"
+anyhow = "1.0.83"
 reqwest = { version = "0.12.4", features = ["blocking"] }
 
 [profile.dev]
-opt-level= 3
+#opt-level= 3
 
 [features]
 default = []

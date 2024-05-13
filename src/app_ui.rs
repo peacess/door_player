@@ -24,153 +24,111 @@ pub struct AppUi {
 
 impl AppUi {
     pub(crate) fn handle_key_player(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        if let Some(player) = &mut self.player {
-            let p = {
-                if self.no_scale {
-                    egui::Vec2::new(player.width as f32, player.height as f32)
-                } else {
-                    AppUi::compute_player_size(
-                        egui::Vec2::new(player.width as f32, player.height as f32),
-                        egui::Vec2::new(ui.min_rect().width(), ui.min_rect().height()),
-                    )
-                }
-            };
-            ui.centered_and_justified(|ui| {
-                player.ui(ui, [p.x, p.y]);
-            });
-
-            ui.input(|k| {
-                for e in &k.events {
-                    if let egui::Event::Key {
-                        key, pressed: true, modifiers, ..
-                    } = e
-                    {
-                        match key {
-                            egui::Key::Escape => {
-                                self.command_ui.set(CommandUi::Close);
-                            }
-                            egui::Key::ArrowLeft => {
-                                player.go_back_ui(&self.command_go_ui);
-                            }
-                            egui::Key::ArrowRight => {
-                                player.go_ahead_ui(&self.command_go_ui);
-                            }
-                            egui::Key::Tab => {
-                                if modifiers.ctrl {
-                                    player.tab_seek_ms = player.elapsed_ms();
-                                } else {
-                                    player.tab_seek();
-                                }
-                            }
-                            egui::Key::ArrowUp | egui::Key::Plus => {
-                                let v = player::kits::Volume::plus_volume(player.audio_volume.get());
-                                player.audio_volume.set(v);
-                            }
-                            egui::Key::ArrowDown | egui::Key::Minus => {
-                                let v = player::kits::Volume::minus_volume(player.audio_volume.get());
-                                player.audio_volume.set(v);
-                            }
-                            egui::Key::Space => {
-                                let state = player.player_state.get();
-                                match state {
-                                    PlayerState::Stopped => {
-                                        player.start();
-                                    }
-                                    PlayerState::Paused => {
-                                        player.resume();
-                                    }
-                                    PlayerState::Playing => {
-                                        player.pause();
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            egui::Key::F1 => {
-                                self.command_ui.set(CommandUi::FullscreenToggle);
-                            }
-                            _ => {}
-                        }
-                    }
-                }
-            });
-        }
-
-        let (next, pre) = ui.input(|k| {
-            let mut next = false;
-            let mut pre = false;
-            for e in &k.events {
-                if let egui::Event::Key { key, pressed: true, .. } = e {
-                    match key {
-                        egui::Key::PageDown => {
-                            next = true;
-                            break;
-                        }
-                        egui::Key::PageUp => {
-                            pre = true;
-                            break;
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            (next, pre)
-        });
-        if next {
-            let file = AppUi::next_file(&self.media_path);
-            self.open_file(ctx, file.into());
-            // if self.player.is_some() {
-            //     ctx.memory_mut(|c|{
-            //         c.request_focus(ui.id());
-            //     });
-            // }
-        } else if pre {
-            let file = AppUi::pre_file(&self.media_path);
-            self.open_file(ctx, file.into());
-            // if self.player.is_some() {
-            //     ctx.memory_mut(|c|{
-            //         c.request_focus(ui.id());
-            //     });
-            // }
-        }
-    }
-
-    pub(crate) fn handle_key_no_player(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
-        let is_open = ui.input(|k| {
-            let mut is_open = false;
-            'EVENTS: for e in &k.events {
+        for e in &ui.input(|k| k.events.clone()) {
+            if let Some(player) = &mut self.player {
                 match e {
                     egui::Event::Key {
-                        key: egui::Key::Space,
-                        pressed: true,
-                        ..
-                    } => {
-                        is_open = true;
-                        break 'EVENTS;
-                    }
+                        key, pressed: true, modifiers, ..
+                    } => match key {
+                        egui::Key::Escape => {
+                            self.command_ui.set(CommandUi::Close);
+                        }
+                        egui::Key::ArrowLeft => {
+                            player.go_back_ui(&self.command_go_ui);
+                        }
+                        egui::Key::ArrowRight => {
+                            player.go_ahead_ui(&self.command_go_ui);
+                        }
+                        egui::Key::Tab => {
+                            if modifiers.ctrl {
+                                player.tab_seek_ms = player.elapsed_ms();
+                            } else {
+                                player.tab_seek();
+                            }
+                        }
+                        egui::Key::ArrowUp | egui::Key::Plus => {
+                            let v = player::kits::Volume::plus_volume(player.audio_volume.get());
+                            player.audio_volume.set(v);
+                        }
+                        egui::Key::ArrowDown | egui::Key::Minus => {
+                            let v = player::kits::Volume::minus_volume(player.audio_volume.get());
+                            player.audio_volume.set(v);
+                        }
+                        egui::Key::Space => match player.player_state.get() {
+                            PlayerState::Stopped => {
+                                player.start();
+                            }
+                            PlayerState::Paused => {
+                                player.resume();
+                            }
+                            PlayerState::Playing => {
+                                player.pause();
+                            }
+                            _ => {}
+                        },
+                        _ => {}
+                    },
                     egui::Event::PointerButton {
                         button: egui::PointerButton::Primary,
                         pressed: false,
                         ..
                     } => {
-                        is_open = true;
-                        break 'EVENTS;
-                    }
-                    egui::Event::Key {
-                        key: egui::Key::Escape,
-                        pressed: true,
-                        ..
-                    } => {
-                        self.command_ui.set(CommandUi::Close);
-                        break 'EVENTS;
+                        if ui.rect_contains_pointer(ctx.available_rect()) {
+                            match player.player_state.get() {
+                                PlayerState::Stopped => {
+                                    player.start();
+                                }
+                                PlayerState::Paused => {
+                                    player.resume();
+                                }
+                                PlayerState::Playing => {
+                                    player.pause();
+                                }
+                                _ => {}
+                            }
+                        }
                     }
                     _ => {}
                 }
-            }
-            is_open
-        });
-        if is_open {
-            if let Some(buf) = Self::select_file() {
-                self.open_file(ctx, buf);
+            } else {
+                match e {
+                    egui::Event::Key { key, pressed: true, .. } => match key {
+                        egui::Key::Space => {
+                            if let Some(buf) = Self::select_file() {
+                                self.open_file(ctx, buf);
+                            }
+                        }
+                        egui::Key::Escape => {
+                            self.command_ui.set(CommandUi::Close);
+                        }
+                        egui::Key::F1 => {
+                            self.command_ui.set(CommandUi::FullscreenToggle);
+                        }
+                        egui::Key::PageDown => {
+                            let file = AppUi::next_file(&self.media_path);
+                            self.open_file(ctx, file.into());
+                        }
+                        egui::Key::PageUp => {
+                            let file = AppUi::pre_file(&self.media_path);
+                            self.open_file(ctx, file.into());
+                        }
+                        _ => {}
+                    },
+                    egui::Event::PointerButton {
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        ..
+                    } => {
+                        if self.player.is_none() {
+                            if ui.rect_contains_pointer(ctx.available_rect()) {
+                                if let Some(buf) = Self::select_file() {
+                                    self.open_file(ctx, buf);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
             }
         }
     }
@@ -406,6 +364,7 @@ impl AppUi {
                 });
             });
     }
+
     fn main_frame(&mut self, ctx: &egui::Context, frame: egui::Frame) {
         self.right_panel(ctx, frame);
         egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
@@ -418,10 +377,21 @@ impl AppUi {
                     self.open_file(ctx, f);
                 }
             }
-            if self.player.is_some() {
-                self.handle_key_player(ui, ctx);
+            if let Some(player) = &mut self.player {
+                let p = {
+                    if self.no_scale {
+                        egui::Vec2::new(player.width as f32, player.height as f32)
+                    } else {
+                        AppUi::compute_player_size(
+                            egui::Vec2::new(player.width as f32, player.height as f32),
+                            egui::Vec2::new(ui.min_rect().width(), ui.min_rect().height()),
+                        )
+                    }
+                };
+                ui.centered_and_justified(|ui| {
+                    player.ui(ui, [p.x, p.y]);
+                });
             }
-            let none = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
 
             let rect = {
                 const WIDTH: f32 = 30.0;
@@ -434,10 +404,8 @@ impl AppUi {
             let button = ui.put(rect, egui::Button::new(self.collapse_str()).small());
             if button.clicked() {
                 self.collapse = !self.collapse;
-            }
-
-            if !button.hovered() && self.player.is_none() && none.hovered() {
-                self.handle_key_no_player(ui, ctx);
+            } else {
+                self.handle_key_player(ui, ctx);
             }
         });
     }
@@ -494,6 +462,20 @@ impl AppUi {
                     ui.horizontal(|ui| {
                         if ui.button("Stop").clicked() {
                             self.player = None;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Pause").clicked() {
+                            if let Some(p) = &mut self.player {
+                                p.pause();
+                            }
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Start").clicked() {
+                            if let Some(p) = &mut self.player {
+                                p.start();
+                            }
                         }
                     });
                     ui.checkbox(&mut self.no_scale, "no scale");
@@ -674,6 +656,7 @@ impl AppUi {
                 // decorations: Some(true),
                 // titlebar_shown: Some(false),
                 resizable: Some(true),
+                window_level: Some(egui::WindowLevel::AlwaysOnTop),
                 ..Default::default()
             },
             ..Default::default()
