@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "door_player"
-version = "0.3.10"
+version = "0.3.11"
 dependencies = [
  "anyhow",
  "atomic",

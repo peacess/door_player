@@ -66,6 +66,9 @@ impl AppUi {
                             }
                             _ => {}
                         },
+                        egui::Key::F1 => {
+                            self.command_ui.set(CommandUi::FullscreenToggle);
+                        }
                         _ => {}
                     },
                     egui::Event::PointerButton {
