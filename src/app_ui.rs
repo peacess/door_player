@@ -651,7 +651,7 @@ impl AppUi {
         let title = "Door Player";
         let ops = eframe::NativeOptions {
             centered: true,
-            renderer: eframe::Renderer::Wgpu,
+            // renderer: eframe::Renderer::Wgpu,
             // follow_system_theme: false,
             default_theme: Theme::Dark,
             viewport: egui::ViewportBuilder {
@@ -659,7 +659,7 @@ impl AppUi {
                 // decorations: Some(true),
                 resizable: Some(true),
                 active: Some(true),
-                window_level: Some(egui::WindowLevel::AlwaysOnTop),
+                // window_level: Some(egui::WindowLevel::AlwaysOnTop),
                 ..Default::default()
             },
             ..Default::default()
