@@ -66,6 +66,14 @@ impl AppUi {
                             }
                             _ => {}
                         },
+                        egui::Key::PageDown => {
+                            let file = AppUi::next_file(&self.media_path);
+                            self.open_file(ctx, file.into());
+                        }
+                        egui::Key::PageUp => {
+                            let file = AppUi::pre_file(&self.media_path);
+                            self.open_file(ctx, file.into());
+                        }
                         egui::Key::F1 => {
                             self.command_ui.set(CommandUi::FullscreenToggle);
                         }
@@ -106,14 +114,6 @@ impl AppUi {
                         }
                         egui::Key::F1 => {
                             self.command_ui.set(CommandUi::FullscreenToggle);
-                        }
-                        egui::Key::PageDown => {
-                            let file = AppUi::next_file(&self.media_path);
-                            self.open_file(ctx, file.into());
-                        }
-                        egui::Key::PageUp => {
-                            let file = AppUi::pre_file(&self.media_path);
-                            self.open_file(ctx, file.into());
                         }
                         _ => {}
                     },
