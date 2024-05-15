@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytemuck::NoUninit;
-use parking_lot::Mutex;
 use ringbuf::traits::{Observer, Producer};
 
 use crate::kits::Shared;
@@ -89,8 +88,7 @@ pub struct PlayCtrl {
     audio_clock: Arc<Clock>,
     /// The player's texture handle.
     pub texture_handle: egui::TextureHandle,
-    producer: Arc<Mutex<RingBufferProducer<f32>>>,
-
+    // producer: Arc<Mutex<RingBufferProducer<f32>>>,
     pub duration: i64,
     pub duration_ms: i64,
     pub video_elapsed_ms: Shared<i64>,
@@ -115,7 +113,6 @@ pub struct PlayCtrl {
 impl PlayCtrl {
     pub fn new(
         duration: i64,
-        producer: RingBufferProducer<f32>,
         audio_dev: Arc<AudioDevice>,
         texture_handle: egui::TextureHandle,
         video_stream_time_base: Option<ffmpeg::Rational>,
@@ -150,7 +147,6 @@ impl PlayCtrl {
             audio_volume: Shared::new(0.5),
             audio_clock,
             texture_handle,
-            producer: Arc::new(Mutex::new(producer)),
             duration,
             duration_ms: timestamp_to_millisecond(duration, AV_TIME_BASE_RATIONAL),
             video_elapsed_ms: Shared::new(0),
@@ -230,8 +226,7 @@ impl PlayCtrl {
     pub fn audio_config(&self) -> cpal::SupportedStreamConfig {
         self.audio_dev.output_config()
     }
-    pub fn play_audio(&mut self, mut frame: AudioPlayFrame) -> Result<(), anyhow::Error> {
-        let mut producer = self.producer.lock();
+    pub fn play_audio(&mut self, mut frame: AudioPlayFrame, producer: &mut RingBufferProducer<f32>) -> Result<(), anyhow::Error> {
         if producer.vacant_len() < frame.samples.len() {
             // log::info!("play audio: for : {}", producer.free_len());
             while producer.vacant_len() < frame.samples.len() {
@@ -304,7 +299,8 @@ impl PlayCtrl {
     }
 
     fn compute_video_delay(&self) -> f64 {
-        let cache_frame = self.producer.lock().occupied_len() as i64 / 2000 + 2;
+        // let cache_frame = self.producer.lock().occupied_len() as i64 / 2000 + 2;
+        let cache_frame = 4;
         let audio_clock = self.audio_clock.play_ts(cache_frame);
         let (video_clock, duration) = self.video_clock.play_ts_duration();
         let diff = video_clock - audio_clock;

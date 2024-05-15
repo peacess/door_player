@@ -12,6 +12,7 @@ use ringbuf::traits::Split;
 use crate::kits::Shared;
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
+use crate::player::kits::RingBufferProducer;
 use crate::player::play_ctrl::PlayCtrl;
 use crate::player::video::VideoPlayFrame;
 use crate::player::{kits, CommandGo, CommandUi, PlayerState, SubtitlePlayFrame, MAX_DIFF_MOVE_MOUSE};
@@ -161,15 +162,14 @@ impl Player {
                 }
             }
         };
-
+        let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820 * 2).split();
         let mut player = {
             let duration = video_input.duration();
 
             let play_ctrl = {
-                let (producer, consumer) = ringbuf::HeapRb::<f32>::new(8820 * 2).split();
                 let audio_dev = Arc::new(AudioDevice::new(consumer)?);
                 audio_dev.resume();
-                PlayCtrl::new(duration, producer, audio_dev, texture_handle, video_stream_time_base, audio_stream_time_base)
+                PlayCtrl::new(duration, audio_dev, texture_handle, video_stream_time_base, audio_stream_time_base)
             };
             Self {
                 play_ctrl,
@@ -227,7 +227,7 @@ impl Player {
                 //run audio decode thread
                 player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_play_sender);
                 //run audio play thread
-                player.audio_play_run(audio_play_receiver);
+                player.audio_play_run(audio_play_receiver, producer);
                 Some(audio_packet_sender)
             }
             None => None,
@@ -471,7 +471,7 @@ impl Player {
         });
     }
 
-    fn audio_play_run(&self, audio_play_receiver: kanal::Receiver<AudioPlayFrame>) {
+    fn audio_play_run(&self, audio_play_receiver: kanal::Receiver<AudioPlayFrame>, mut producer: RingBufferProducer<f32>) {
         let mut play_ctrl = self.play_ctrl.clone();
         let _ = std::thread::Builder::new().name("audio play".to_string()).spawn(move || {
             let mut empty_count = 0;
@@ -501,7 +501,7 @@ impl Player {
                         }
                     }
                     Ok(Some(frame)) => {
-                        if let Err(e) = play_ctrl.play_audio(frame) {
+                        if let Err(e) = play_ctrl.play_audio(frame, &mut producer) {
                             log::error!("{}", e);
                         }
                         empty_count = 0;

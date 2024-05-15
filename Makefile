@@ -1,10 +1,11 @@
 
-.PHONY: build clean upgrade format
+.PHONY: build rebuild clean upgrade format
 
 build:
 	cargo build --release
 clean:
 	cargo clean
+rebuild: clean build
 upgrade:
 	cargo upgrade --incompatible
 format:
