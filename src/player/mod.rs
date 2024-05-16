@@ -6,6 +6,7 @@ pub use play_ctrl::*;
 pub use player_::*;
 pub use subtitle::*;
 pub use video::*;
+pub use video_audio_rs::*;
 
 mod audio;
 mod clock;
@@ -16,3 +17,4 @@ mod play_ctrl;
 mod player_;
 mod subtitle;
 mod video;
+mod video_audio_rs;

@@ -9,23 +9,23 @@ use eframe::epaint::{emath::NumExt, mutex::RwLock, textures::TextureOptions, Ima
 ///
 /// If you are using egui, use `egui::Context::load_texture`.
 ///
-/// The [`TextureHandle`] can be cloned cheaply.
-/// When the last [`TextureHandle`] for specific texture is dropped, the texture is freed.
+/// The [`TextureHandleNoMut`] can be cloned cheaply.
+/// When the last [`TextureHandleNoMut`] for specific texture is dropped, the texture is freed.
 ///
 /// See also [`TextureManager`].
 #[must_use]
-pub struct TextureHandle {
+pub struct TextureHandleNoMut {
     tex_mngr: Arc<RwLock<TextureManager>>,
     id: TextureId,
 }
 
-impl Drop for TextureHandle {
+impl Drop for TextureHandleNoMut {
     fn drop(&mut self) {
         self.tex_mngr.write().free(self.id);
     }
 }
 
-impl Clone for TextureHandle {
+impl Clone for TextureHandleNoMut {
     fn clone(&self) -> Self {
         self.tex_mngr.write().retain(self.id);
         Self {
@@ -35,23 +35,23 @@ impl Clone for TextureHandle {
     }
 }
 
-impl PartialEq for TextureHandle {
+impl PartialEq for TextureHandleNoMut {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.id == other.id
     }
 }
 
-impl Eq for TextureHandle {}
+impl Eq for TextureHandleNoMut {}
 
-impl std::hash::Hash for TextureHandle {
+impl std::hash::Hash for TextureHandleNoMut {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }
 }
 
-impl TextureHandle {
+impl TextureHandleNoMut {
     /// If you are using egui, use `egui::Context::load_texture` instead.
     pub fn new(tex_mngr: Arc<RwLock<TextureManager>>, id: TextureId) -> Self {
         Self { tex_mngr, id }
@@ -100,16 +100,16 @@ impl TextureHandle {
     }
 }
 
-impl From<&TextureHandle> for TextureId {
+impl From<&TextureHandleNoMut> for TextureId {
     #[inline(always)]
-    fn from(handle: &TextureHandle) -> Self {
+    fn from(handle: &TextureHandleNoMut) -> Self {
         handle.id()
     }
 }
 
-impl From<&mut TextureHandle> for TextureId {
+impl From<&mut TextureHandleNoMut> for TextureId {
     #[inline(always)]
-    fn from(handle: &mut TextureHandle) -> Self {
+    fn from(handle: &mut TextureHandleNoMut) -> Self {
         handle.id()
     }
 }

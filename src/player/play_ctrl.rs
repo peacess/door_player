@@ -5,7 +5,7 @@ use std::time::Duration;
 use bytemuck::NoUninit;
 use ringbuf::traits::{Observer, Producer};
 
-use crate::kits::Shared;
+use crate::kits::{Shared, TextureHandleNoMut};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::VIDEO_SYNC_THRESHOLD_MAX;
 use crate::player::video::VideoPlayFrame;
@@ -43,7 +43,7 @@ pub struct PlayCtrl {
     pub audio_volume: Shared<f64>,
     audio_clock: Arc<Clock>,
     /// The player's texture handle.
-    pub texture_handle: egui::TextureHandle,
+    pub texture_handle: TextureHandleNoMut,
     // producer: Arc<Mutex<RingBufferProducer<f32>>>,
     pub duration: i64,
     pub duration_ms: i64,
@@ -52,17 +52,7 @@ pub struct PlayCtrl {
     pub video_elapsed_ms_override: Shared<i64>,
 
     pub command_go: Shared<CommandGo>,
-
-    pub video_packet_receiver: Option<kanal::Receiver<Option<ffmpeg::Packet>>>,
-    pub video_packet_sender: Option<kanal::Sender<Option<ffmpeg::Packet>>>,
-    pub video_play_receiver: Option<kanal::Receiver<VideoPlayFrame>>,
-    pub video_play_sender: Option<kanal::Sender<VideoPlayFrame>>,
     pub video_stream_time_base: Option<ffmpeg::Rational>,
-
-    pub audio_packet_receiver: Option<kanal::Receiver<Option<ffmpeg::Packet>>>,
-    pub audio_packet_sender: Option<kanal::Sender<Option<ffmpeg::Packet>>>,
-    pub audio_play_receiver: Option<kanal::Receiver<AudioPlayFrame>>,
-    pub audio_play_sender: Option<kanal::Sender<AudioPlayFrame>>,
     pub audio_stream_time_base: Option<ffmpeg::Rational>,
 }
 
@@ -70,7 +60,7 @@ impl PlayCtrl {
     pub fn new(
         duration: i64,
         audio_dev: Arc<AudioDevice>,
-        texture_handle: egui::TextureHandle,
+        texture_handle: TextureHandleNoMut,
         video_stream_time_base: Option<ffmpeg::Rational>,
         audio_stream_time_base: Option<ffmpeg::Rational>,
     ) -> Self {
@@ -109,15 +99,7 @@ impl PlayCtrl {
             audio_elapsed_ms: Shared::new(0),
             video_elapsed_ms_override: Shared::new(-1),
             command_go: Shared::new(CommandGo::None),
-            video_packet_receiver: None,
-            video_packet_sender: None,
-            video_play_receiver: None,
-            video_play_sender: None,
             video_stream_time_base,
-            audio_packet_receiver: None,
-            audio_packet_sender: None,
-            audio_play_receiver: None,
-            audio_play_sender: None,
             audio_stream_time_base,
         }
     }
@@ -151,38 +133,10 @@ impl PlayCtrl {
         self.packet_finished.load(Ordering::Relaxed)
     }
 
-    pub fn seek_clean(&self) {
-        if let Some(receiver) = &self.video_packet_receiver {
-            let size = receiver.len();
-            for _ in 0..size {
-                let _ = receiver.try_recv();
-            }
-        }
-        if let Some(receiver) = &self.video_play_receiver {
-            let size = receiver.len();
-            for _ in 0..size {
-                let _ = receiver.try_recv();
-            }
-        }
-        if let Some(receiver) = &self.audio_packet_receiver {
-            let size = receiver.len();
-            for _ in 0..size {
-                let _ = receiver.try_recv();
-            }
-        }
-        if let Some(receiver) = &self.audio_play_receiver {
-            let size = receiver.len();
-            for _ in 0..size {
-                let _ = receiver.try_recv();
-            }
-        }
-        //clear the video and audio frame
-    }
-
     pub fn audio_config(&self) -> cpal::SupportedStreamConfig {
         self.audio_dev.output_config()
     }
-    pub fn play_audio(&mut self, mut frame: AudioPlayFrame, producer: &mut RingBufferProducer<f32>) -> Result<(), anyhow::Error> {
+    pub fn play_audio(&self, mut frame: AudioPlayFrame, producer: &mut RingBufferProducer<f32>) -> Result<(), anyhow::Error> {
         if producer.vacant_len() < frame.samples.len() {
             // log::info!("play audio: for : {}", producer.free_len());
             while producer.vacant_len() < frame.samples.len() {
@@ -220,7 +174,7 @@ impl PlayCtrl {
         Ok(())
     }
 
-    pub fn play_video(&mut self, frame: VideoPlayFrame, ctx: &egui::Context) -> Result<(), anyhow::Error> {
+    pub fn play_video(&self, frame: VideoPlayFrame, ctx: &egui::Context) -> Result<(), anyhow::Error> {
         let delay = self.update_video_clock(frame.pts, frame.duration, frame.timestamp);
         self.texture_handle.set(frame.color_image, egui::TextureOptions::LINEAR);
         ctx.request_repaint();

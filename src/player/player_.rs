@@ -1,5 +1,5 @@
 use std::default::Default;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::sync::Arc;
 use std::time::UNIX_EPOCH;
 use std::{fs, path};
@@ -9,18 +9,18 @@ use egui::{load::SizedTexture, Ui, Visuals};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use ringbuf::traits::Split;
 
-use crate::kits::Shared;
+use crate::kits::{Shared, TextureHandleNoMut};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::kits::RingBufferProducer;
 use crate::player::play_ctrl::PlayCtrl;
 use crate::player::video::VideoPlayFrame;
-use crate::player::{kits, CommandGo, CommandUi, PlayerState, SubtitlePlayFrame, MAX_DIFF_MOVE_MOUSE};
+use crate::player::{kits, CommandGo, CommandUi, PlayerState, SubtitlePlayFrame, VideoAudioRS, MAX_DIFF_MOVE_MOUSE};
 
 /// player base ffmpeg, there are 4 threads to player file.
 pub struct Player {
     //是否需要停止播放相关线程
-    pub play_ctrl: PlayCtrl,
+    pub play_ctrl: Arc<PlayCtrl>,
     pub width: u32,
     pub height: u32,
 
@@ -32,11 +32,13 @@ pub struct Player {
     pub mouth_move_ts: i64,
 
     pub command_ui: Shared<CommandUi>,
+
+    pub video_audio_rs: VideoAudioRS,
 }
 
 impl Player {
     //初始化所有线程，如果之前的还在，结束它们
-    pub fn new(ctx: &egui::Context, mut texture_handle: egui::TextureHandle, command_ui: Shared<CommandUi>, file: &String) -> Result<Player, anyhow::Error> {
+    pub fn new(ctx: &egui::Context, texture_handle: TextureHandleNoMut, command_ui: Shared<CommandUi>, file: &String) -> Result<Player, anyhow::Error> {
         {
             let mut format_input = ffmpeg::format::input(&path::Path::new(file))?;
             match Self::first_frame(&mut format_input) {
@@ -172,13 +174,14 @@ impl Player {
                 PlayCtrl::new(duration, audio_dev, texture_handle, video_stream_time_base, audio_stream_time_base)
             };
             Self {
-                play_ctrl,
+                play_ctrl: Arc::new(play_ctrl),
                 width: 0,
                 height: 0,
                 last_seek_ms: None,
                 tab_seek_ms: 0,
                 mouth_move_ts: Utc::now().timestamp_millis(),
                 command_ui,
+                video_audio_rs: VideoAudioRS::new(),
             }
         };
         if let Some(video_decoder) = &video_decoder {
@@ -198,11 +201,11 @@ impl Player {
                 };
                 let (video_play_sender, video_play_receiver) = kanal::bounded(VIDEO_FRAME_QUEUE_SIZE);
                 {
-                    player.video_packet_receiver = Some(video_packet_receiver.clone());
-                    player.video_packet_sender = Some(video_packet_sender.clone());
-                    player.video_play_receiver = Some(video_play_receiver.clone());
-                    player.video_play_sender = Some(video_play_sender.clone());
-                    player.video_stream_time_base = video_stream_time_base;
+                    player.video_audio_rs.video_packet_receiver = Some(video_packet_receiver.clone());
+                    player.video_audio_rs.video_packet_sender = Some(video_packet_sender.clone());
+                    player.video_audio_rs.video_play_receiver = Some(video_play_receiver.clone());
+                    player.video_audio_rs.video_play_sender = Some(video_play_sender.clone());
+                    // player.video_stream_time_base = video_stream_time_base;
                 }
                 //run decode video thread
                 player.video_decode_run(video_decoder, video_packet_receiver, video_play_sender, graph);
@@ -218,11 +221,11 @@ impl Player {
                 let (audio_packet_sender, audio_packet_receiver) = kanal::bounded(AUDIO_FRAME_QUEUE_SIZE);
                 let (audio_play_sender, audio_play_receiver) = kanal::bounded(AUDIO_PACKET_QUEUE_SIZE);
                 {
-                    player.audio_packet_receiver = Some(audio_packet_receiver.clone());
-                    player.audio_packet_sender = Some(audio_packet_sender.clone());
-                    player.audio_play_receiver = Some(audio_play_receiver.clone());
-                    player.audio_play_sender = Some(audio_play_sender.clone());
-                    player.audio_stream_time_base = audio_stream_time_base;
+                    player.video_audio_rs.audio_packet_receiver = Some(audio_packet_receiver.clone());
+                    player.video_audio_rs.audio_packet_sender = Some(audio_packet_sender.clone());
+                    player.video_audio_rs.audio_play_receiver = Some(audio_play_receiver.clone());
+                    player.video_audio_rs.audio_play_sender = Some(audio_play_sender.clone());
+                    // player.audio_stream_time_base = audio_stream_time_base;
                 }
                 //run audio decode thread
                 player.audio_decode_run(audio_decoder, audio_packet_receiver, audio_play_sender);
@@ -242,9 +245,22 @@ impl Player {
         // player.play_ctrl.set_pause(false);
     }
 
-    pub fn default_texture_handle(ctx: &egui::Context) -> egui::TextureHandle {
-        let img = egui::ColorImage::new([124, 124], egui::Color32::TRANSPARENT);
-        ctx.load_texture("video_stream_default", img, egui::TextureOptions::LINEAR)
+    pub fn default_texture_handle(ctx: &egui::Context) -> TextureHandleNoMut {
+        let image: egui::ImageData = egui::ColorImage::new([124, 124], egui::Color32::TRANSPARENT).into();
+        // see  ctx.load_texture("video_stream_default", img, egui::TextureOptions::LINEAR);
+        let name = "video_stream_default".into();
+        let max_texture_side = ctx.input(|i| i.max_texture_side);
+        egui::egui_assert!(
+            image.width() <= max_texture_side && image.height() <= max_texture_side,
+            "Texture {:?} has size {}x{}, but the maximum texture side is {}",
+            name,
+            image.width(),
+            image.height(),
+            max_texture_side
+        );
+        let tex_mngr = ctx.tex_manager();
+        let tex_id = tex_mngr.write().alloc(name, image, egui::TextureOptions::LINEAR);
+        TextureHandleNoMut::new(tex_mngr, tex_id)
     }
 
     pub fn frame_to_color_image(frame: &ffmpeg::frame::Video) -> Result<egui::ColorImage, ffmpeg::Error> {
@@ -472,7 +488,7 @@ impl Player {
     }
 
     fn audio_play_run(&self, audio_play_receiver: kanal::Receiver<AudioPlayFrame>, mut producer: RingBufferProducer<f32>) {
-        let mut play_ctrl = self.play_ctrl.clone();
+        let play_ctrl = self.play_ctrl.clone();
         let _ = std::thread::Builder::new().name("audio play".to_string()).spawn(move || {
             let mut empty_count = 0;
             loop {
@@ -650,7 +666,7 @@ impl Player {
     }
 
     fn video_play_run(&self, ctx: egui::Context, video_play_receiver: kanal::Receiver<VideoPlayFrame>) {
-        let mut play_ctrl = self.play_ctrl.clone();
+        let play_ctrl = self.play_ctrl.clone();
         let _ = std::thread::Builder::new().name("video play".to_string()).spawn(move || {
             let mut empty_count = 0;
             loop {
@@ -796,6 +812,7 @@ impl Player {
         video_index: usize,
     ) {
         let play_ctrl = self.play_ctrl.clone();
+        let video_audio_rs = self.video_audio_rs.clone();
         let duration = input.duration();
         let _ = std::thread::Builder::new().name("read packet".to_string()).spawn(move || {
             'PACKETS: loop {
@@ -841,7 +858,7 @@ impl Player {
                             }
                         }
 
-                        play_ctrl.seek_clean();
+                        video_audio_rs.seek_clean();
                         if let Some(a) = &audio_packet_sender {
                             let _ = a.send(None);
                         }
@@ -866,7 +883,7 @@ impl Player {
                         if let Err(e) = input.seek(seek_pos, ..seek_pos) {
                             log::error!("{}", e);
                         }
-                        play_ctrl.seek_clean();
+                        video_audio_rs.seek_clean();
                         if let Some(a) = &audio_packet_sender {
                             let _ = a.send(None);
                         }
@@ -1295,12 +1312,6 @@ impl Deref for Player {
 
     fn deref(&self) -> &Self::Target {
         &self.play_ctrl
-    }
-}
-
-impl DerefMut for Player {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.play_ctrl
     }
 }
 
