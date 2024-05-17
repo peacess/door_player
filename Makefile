@@ -5,8 +5,9 @@ build:
 	cargo build --release
 clean:
 	cargo clean
+	rm Cargo.lock
 rebuild: clean build
 upgrade:
-	cargo upgrade --incompatible
+	cargo upgrade && cargo update
 format:
 	cargo +nightly-gnu fmt
