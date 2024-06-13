@@ -8,7 +8,7 @@ pub const VIDEO_PACKET_QUEUE_SIZE: usize = 128;
 pub const AUDIO_FRAME_QUEUE_SIZE: usize = 64;
 pub const VIDEO_FRAME_QUEUE_SIZE: usize = 64;
 
-pub const PLAY_MIN_INTERVAL: Duration = Duration::from_millis(20);
+pub const PLAY_MIN_INTERVAL: Duration = Duration::from_millis(10);
 
 /// 视频同步阈值最小 (视频落后于音频的最小时间)
 pub const VIDEO_SYNC_THRESHOLD_MIN: f64 = -0.1;
