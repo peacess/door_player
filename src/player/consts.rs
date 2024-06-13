@@ -3,10 +3,10 @@ use std::time::Duration;
 use ffmpeg::sys::AV_TIME_BASE;
 use ffmpeg::Rational;
 
-pub const AUDIO_PACKET_QUEUE_SIZE: usize = 128;
-pub const VIDEO_PACKET_QUEUE_SIZE: usize = 128;
-pub const AUDIO_FRAME_QUEUE_SIZE: usize = 64;
-pub const VIDEO_FRAME_QUEUE_SIZE: usize = 64;
+pub const AUDIO_PACKET_QUEUE_SIZE: usize = 32;
+pub const VIDEO_PACKET_QUEUE_SIZE: usize = 32;
+pub const AUDIO_FRAME_QUEUE_SIZE: usize = 4;
+pub const VIDEO_FRAME_QUEUE_SIZE: usize = 4;
 
 pub const PLAY_MIN_INTERVAL: Duration = Duration::from_millis(10);
 
