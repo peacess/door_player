@@ -1137,16 +1137,16 @@ impl Player {
                     self.set_mute(!mute);
                 }
                 let mut sound_slider_rect = sound_icon_rect;
-                sound_slider_rect.set_bottom(sound_icon_rect.bottom());
+                sound_slider_rect.set_bottom(sound_icon_rect.top());
                 sound_slider_rect.set_top(sound_slider_rect.top() - 124.0);
 
                 let sound_slider_hovered = painter_ui.rect_contains_pointer(sound_slider_rect);
                 if sound_slider_hovered {
-                    let mut volume = -kits::Volume::int_volume(self.audio_volume.get());
-                    let mut volume_slider = egui::Slider::new(&mut volume, -kits::Volume::MAX_INT_VOLUME..=0).vertical();
+                    let mut volume = kits::Volume::int_volume(self.audio_volume.get());
+                    let mut volume_slider = egui::Slider::new(&mut volume, 0..=kits::Volume::MAX_INT_VOLUME).vertical();
                     volume_slider = volume_slider.show_value(false);
                     if painter_ui.put(sound_slider_rect, volume_slider).changed() {
-                        let v = kits::Volume::f64_volume(-volume);
+                        let v = kits::Volume::f64_volume(volume);
                         self.audio_volume.set(v);
                     }
                 }
