@@ -5,11 +5,11 @@ use std::time::UNIX_EPOCH;
 use std::{fs, path};
 
 use chrono::{DateTime, Utc};
-use egui::{load::SizedTexture, Ui, Visuals};
+use egui::{load::SizedTexture, LayerId, Ui, Visuals, WidgetRect};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use ringbuf::traits::Split;
 
-use crate::kits::{Shared, TextureHandleNoMut};
+use crate::kits::{Eguis, Shared, TextureHandleNoMut};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::kits::RingBufferProducer;
@@ -982,6 +982,8 @@ impl Player {
         };
 
         if (is_paused || is_stopped || currently_seeking || self.show_seekbar()) && seekbar_anim_frac > 0. {
+            let front_painter = Eguis::front_painter(ui.ctx());
+            let mut painter_ui = Eguis::ui_from_painter(&front_painter);
             let seekbar_width_offset = 20.;
             let full_seek_bar_width = image_res.rect.width() - seekbar_width_offset;
 
@@ -994,14 +996,15 @@ impl Player {
 
             let mut seekbar_rect = egui::Rect::from_min_size(seekbar_pos, egui::vec2(seekbar_width, seekbar_height));
             let seekbar_interact_rect = full_seek_bar_rect.expand(10.);
-            ui.interact(seekbar_interact_rect, image_res.id, egui::Sense::drag());
+            painter_ui.interact(seekbar_interact_rect, image_res.id, egui::Sense::drag());
 
-            let seekbar_response = ui.interact(seekbar_interact_rect, image_res.id.with("seekbar"), egui::Sense::click_and_drag());
+            let seekbar_response = painter_ui.interact(seekbar_interact_rect, image_res.id.with("seekbar"), egui::Sense::click_and_drag());
 
             let seekbar_hovered = seekbar_response.hovered();
-            let seekbar_hover_anim_frac = ui
-                .ctx()
-                .animate_bool_with_time(image_res.id.with("seekbar_hover_anim"), seekbar_hovered || currently_seeking, 0.2);
+            let seekbar_hover_anim_frac =
+                front_painter
+                    .ctx()
+                    .animate_bool_with_time(image_res.id.with("seekbar_hover_anim"), seekbar_hovered || currently_seeking, 0.2);
 
             if seekbar_hover_anim_frac > 0. {
                 let new_top = full_seek_bar_rect.top() - (3. * seekbar_hover_anim_frac);
@@ -1009,7 +1012,7 @@ impl Player {
                 seekbar_rect.set_top(new_top);
             }
 
-            let seek_indicator_anim = ui
+            let seek_indicator_anim = front_painter
                 .ctx()
                 .animate_bool_with_time(image_res.id.with("seek_indicator_anim"), currently_seeking, 0.1);
 
@@ -1017,8 +1020,8 @@ impl Player {
                 let mut seek_indicator_shadow = Visuals::dark().window_shadow;
                 seek_indicator_shadow.color = seek_indicator_shadow.color.linear_multiply(seek_indicator_anim);
                 let spinner_size = 20. * seek_indicator_anim;
-                ui.painter().add(seek_indicator_shadow.tessellate(image_res.rect, egui::Rounding::ZERO));
-                ui.put(
+                front_painter.add(seek_indicator_shadow.tessellate(image_res.rect, egui::Rounding::ZERO));
+                painter_ui.put(
                     egui::Rect::from_center_size(image_res.rect.center(), egui::Vec2::splat(spinner_size)),
                     egui::Spinner::new().size(spinner_size),
                 );
@@ -1092,15 +1095,13 @@ impl Player {
             let full_seek_bar_color = egui::Color32::GRAY.linear_multiply(seekbar_anim_frac);
             let seekbar_color = egui::Color32::WHITE.linear_multiply(seekbar_anim_frac);
 
-            ui.painter().add(shadow_mesh);
+            front_painter.add(shadow_mesh);
 
-            ui.painter()
-                .rect_filled(full_seek_bar_rect, egui::Rounding::ZERO, full_seek_bar_color.linear_multiply(0.5));
-            ui.painter().rect_filled(seekbar_rect, egui::Rounding::ZERO, seekbar_color);
-            ui.painter()
-                .text(pause_icon_pos, egui::Align2::LEFT_BOTTOM, pause_icon, icon_font_id.clone(), text_color);
+            front_painter.rect_filled(full_seek_bar_rect, egui::Rounding::ZERO, full_seek_bar_color.linear_multiply(0.5));
+            front_painter.rect_filled(seekbar_rect, egui::Rounding::ZERO, seekbar_color);
+            front_painter.text(pause_icon_pos, egui::Align2::LEFT_BOTTOM, pause_icon, icon_font_id.clone(), text_color);
 
-            ui.painter().text(
+            front_painter.text(
                 duration_text_pos,
                 egui::Align2::LEFT_BOTTOM,
                 self.duration_text(),
@@ -1109,8 +1110,7 @@ impl Player {
             );
 
             if seekbar_hover_anim_frac > 0. {
-                ui.painter()
-                    .circle_filled(seekbar_rect.right_center(), 7. * seekbar_hover_anim_frac, seekbar_color);
+                front_painter.circle_filled(seekbar_rect.right_center(), 7. * seekbar_hover_anim_frac, seekbar_color);
             }
 
             {
@@ -1127,11 +1127,9 @@ impl Player {
             }
 
             {
-                let sound_icon_rect = ui
-                    .painter()
-                    .text(sound_icon_pos, egui::Align2::RIGHT_BOTTOM, sound_icon, icon_font_id.clone(), text_color);
+                let sound_icon_rect = front_painter.text(sound_icon_pos, egui::Align2::RIGHT_BOTTOM, sound_icon, icon_font_id.clone(), text_color);
 
-                if ui
+                if painter_ui
                     .interact(sound_icon_rect, image_res.id.with("sound_icon_sense"), egui::Sense::click())
                     .clicked()
                 {
@@ -1142,12 +1140,12 @@ impl Player {
                 sound_slider_rect.set_bottom(sound_icon_rect.bottom());
                 sound_slider_rect.set_top(sound_slider_rect.top() - 124.0);
 
-                let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_rect);
+                let sound_slider_hovered = painter_ui.rect_contains_pointer(sound_slider_rect);
                 if sound_slider_hovered {
                     let mut volume = -kits::Volume::int_volume(self.audio_volume.get());
                     let mut volume_slider = egui::Slider::new(&mut volume, -kits::Volume::MAX_INT_VOLUME..=0).vertical();
                     volume_slider = volume_slider.show_value(false);
-                    if ui.put(sound_slider_rect, volume_slider).changed() {
+                    if painter_ui.put(sound_slider_rect, volume_slider).changed() {
                         let v = kits::Volume::f64_volume(-volume);
                         self.audio_volume.set(v);
                     }
