@@ -10,6 +10,6 @@ impl Eguis {
         let available_rect = ctx.available_rect();
         let layer_id = egui::LayerId::background();
         let clip_rect = ctx.screen_rect();
-        egui::Ui::new(ctx.clone(), layer_id, layer_id.id, available_rect, clip_rect)
+        egui::Ui::new(ctx.clone(), layer_id, layer_id.id, available_rect, clip_rect, egui::UiStackInfo::default())
     }
 }

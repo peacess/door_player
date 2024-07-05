@@ -665,7 +665,7 @@ impl AppUi {
             ..Default::default()
         };
 
-        let re = eframe::run_native(title, ops, Box::new(|cc| Box::new(AppUi::new(cc, title))));
+        let re = eframe::run_native(title, ops, Box::new(|cc| Ok(Box::new(AppUi::new(cc, title)))));
         if let Err(e) = re {
             log::error!("{:?}", e);
         }

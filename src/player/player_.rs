@@ -5,7 +5,7 @@ use std::time::UNIX_EPOCH;
 use std::{fs, path};
 
 use chrono::{DateTime, Utc};
-use egui::{load::SizedTexture, LayerId, Ui, Visuals, WidgetRect};
+use egui::{load::SizedTexture, Ui, Visuals};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use ringbuf::traits::Split;
 
@@ -250,7 +250,7 @@ impl Player {
         // see  ctx.load_texture("video_stream_default", img, egui::TextureOptions::LINEAR);
         let name = "video_stream_default".into();
         let max_texture_side = ctx.input(|i| i.max_texture_side);
-        egui::egui_assert!(
+        assert!(
             image.width() <= max_texture_side && image.height() <= max_texture_side,
             "Texture {:?} has size {}x{}, but the maximum texture side is {}",
             name,
@@ -1020,7 +1020,7 @@ impl Player {
                 let mut seek_indicator_shadow = Visuals::dark().window_shadow;
                 seek_indicator_shadow.color = seek_indicator_shadow.color.linear_multiply(seek_indicator_anim);
                 let spinner_size = 20. * seek_indicator_anim;
-                front_painter.add(seek_indicator_shadow.tessellate(image_res.rect, egui::Rounding::ZERO));
+                front_painter.add(seek_indicator_shadow.as_shape(image_res.rect, egui::Rounding::ZERO));
                 painter_ui.put(
                     egui::Rect::from_center_size(image_res.rect.center(), egui::Vec2::splat(spinner_size)),
                     egui::Spinner::new().size(spinner_size),
@@ -1090,7 +1090,7 @@ impl Player {
 
             let mut shadow_rect = image_res.rect;
             shadow_rect.set_top(shadow_rect.bottom() - seekbar_offset - 10.);
-            let shadow_mesh = shadow.tessellate(shadow_rect, egui::Rounding::ZERO);
+            let shadow_mesh = shadow.as_shape(shadow_rect, egui::Rounding::ZERO);
 
             let full_seek_bar_color = egui::Color32::GRAY.linear_multiply(seekbar_anim_frac);
             let seekbar_color = egui::Color32::WHITE.linear_multiply(seekbar_anim_frac);
