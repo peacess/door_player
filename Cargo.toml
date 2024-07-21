@@ -26,7 +26,7 @@ cpal = "0.15.3"
 spin_sleep = "1.2.0"
 
 ringbuf = "0.4.1"
-rust_kits = {version = "0.1.2",git = "https://github.com/peacess/rust.git"}
+rust_kits = {version = "0.1.4"}
 #
 parking_lot = "0.12.3"
 atomic = "0.6.0"

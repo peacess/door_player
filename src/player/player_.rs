@@ -952,9 +952,105 @@ impl Player {
     pub fn ui(&mut self, ui: &mut Ui, size: [f32; 2]) -> egui::Response {
         let image = egui::Image::new(SizedTexture::new(self.play_ctrl.texture_handle.id(), size)).sense(egui::Sense::click());
         let response = ui.add(image);
-        self.render_ui(ui, &response);
+        self.render_status(ui, &response);
         self.process_state();
         response
+    }
+    fn render_status(&mut self, ui: &mut Ui, image_res: &egui::Response) -> Option<egui::Rect> {
+        if ui.input(|e| e.pointer.is_moving()) {
+            self.mouth_move_ts = Utc::now().timestamp_millis();
+            let cursor = ui.ctx().output(|o| o.cursor_icon);
+            if cursor == egui::CursorIcon::None {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Default);
+            }
+        }
+        let show_status = { Utc::now().timestamp_millis() - self.mouth_move_ts < MAX_DIFF_MOVE_MOUSE };
+        let is_stopped = self.player_state.get() == PlayerState::Stopped;
+        let is_paused = self.player_state.get() == PlayerState::Paused;
+        let currently_seeking = matches!(self.player_state.get(), PlayerState::Seeking(_));
+        if show_status {
+            const height: f32 = 120.0;
+            let mut area = egui::Area::new(egui::Id::new("_player_status_area"))
+                .kind(egui::UiKind::BottomPanel)
+                .order(egui::Order::Foreground)
+                .fixed_pos(image_res.rect.left_bottom() - egui::vec2(0.0, height))
+                .default_width(image_res.rect.width())
+                .sense(egui::Sense::hover());
+            area.show(ui.ctx(), |ui| {
+                ui.style_mut().visuals.faint_bg_color = egui::Color32::TRANSPARENT;
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                        let pause_icon = if is_paused {
+                            "▶"
+                        } else if is_stopped {
+                            "◼"
+                        } else if currently_seeking {
+                            "↔"
+                        } else {
+                            "⏸"
+                        };
+
+                        ui.label(pause_icon);
+                        ui.label(self.duration_text().as_str());
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let audio_volume_frac = self.audio_volume.get();
+                        let sound_icon = if self.get_mute() {
+                            "🔇"
+                        } else if audio_volume_frac > 0.7 {
+                            "🔊"
+                        } else if audio_volume_frac > 0.4 {
+                            "🔉"
+                        } else if audio_volume_frac > 0. {
+                            "🔈"
+                        } else {
+                            "🔇"
+                        };
+                        let icon_font_id = egui::FontId {
+                            size: 16.0,
+                            ..std::default::Default::default()
+                        };
+                        let sound = ui.label(egui::RichText::new(sound_icon).font(icon_font_id));
+                        let sound_volume_id = ui.make_persistent_id("_sound_volume");
+                        egui::popup_above_or_below_widget(
+                            ui,
+                            sound_volume_id,
+                            &sound,
+                            egui::AboveOrBelow::Above,
+                            egui::PopupCloseBehavior::CloseOnClickOutside,
+                            |ui| {
+                                let mut volume = kits::Volume::int_volume(self.audio_volume.get());
+                                let mut volume_slider = egui::Slider::new(&mut volume, 0..=kits::Volume::MAX_INT_VOLUME).vertical();
+                                volume_slider = volume_slider.show_value(false);
+                                // let mut sound_slider_rect = sound.rect;
+                                // sound_slider_rect.set_bottom(sound.rect.top());
+                                // sound_slider_rect.set_top(sound_slider_rect.top() - 124.0);
+                                ui.set_width(5.0);
+                                ui.set_height(120.0);
+                                ui.style_mut().visuals.faint_bg_color = egui::Color32::TRANSPARENT;
+                                ui.spacing_mut().slider_width = 120.0;
+                                ui.spacing_mut().slider_rail_height = 5.0;
+                                if ui.add(volume_slider).changed() {
+                                    let v = kits::Volume::f64_volume(volume);
+                                    self.audio_volume.set(v);
+                                }
+                            },
+                        );
+                        if sound.hovered() || sound.clicked() {
+                            ui.memory_mut(|it| it.open_popup(sound_volume_id));
+                        }
+                    });
+                });
+                ui.horizontal(|ui| {
+                    let mut value = self.duration * (self.video_elapsed_ms.get()) / self.duration_ms;
+                    let seek_bar = egui::Slider::new(&mut value, 0i64..=self.duration).show_value(false).trailing_fill(true);
+                    ui.spacing_mut().slider_width = ui.available_width();
+                    ui.spacing_mut().slider_rail_height = 3.0;
+                    ui.add(seek_bar);
+                });
+            });
+        }
+        None
     }
     fn render_ui(&mut self, ui: &mut Ui, image_res: &egui::Response) -> Option<egui::Rect> {
         let hovered = ui.rect_contains_pointer(image_res.rect);
@@ -966,13 +1062,7 @@ impl Player {
                 .animate_bool_with_time(image_res.id.with("seekbar_anim"), hovered || currently_seeking || is_paused || is_stopped, 0.2);
 
         {
-            let mut moving = false;
-            ui.input(|e| {
-                if e.pointer.is_moving() {
-                    moving = true;
-                }
-            });
-            if moving {
+            if ui.input(|e| e.pointer.is_moving()) {
                 self.mouth_move_ts = Utc::now().timestamp_millis();
                 let cursor = ui.ctx().output(|o| o.cursor_icon);
                 if cursor == egui::CursorIcon::None {
