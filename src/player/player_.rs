@@ -970,13 +970,22 @@ impl Player {
         let currently_seeking = matches!(self.player_state.get(), PlayerState::Seeking(_));
         if show_status {
             const height: f32 = 120.0;
-            let mut area = egui::Area::new(egui::Id::new("_player_status_area"))
-                .kind(egui::UiKind::BottomPanel)
+            let mut area_rect = image_res.rect.clone();
+            *area_rect.top_mut() = area_rect.bottom() - height;
+            // println!("{}", area_rect);
+            let id = egui::Id::new("_player_status_area");
+            let mut area = egui::Area::new(id)
+                // .kind(egui::UiKind::BottomPanel)
                 .order(egui::Order::Foreground)
-                .fixed_pos(image_res.rect.left_bottom() - egui::vec2(0.0, height))
-                .default_width(image_res.rect.width())
-                .sense(egui::Sense::hover());
+                .default_width(area_rect.width())
+                .default_height(area_rect.height())
+                .constrain_to(area_rect)
+                .current_pos(area_rect.left_top())
+                .sense(egui::Sense::click_and_drag());
+            println!("out: {}", ui.available_size());
+            //ctx.memory(|mem| mem.areas().get(id).copied())
             area.show(ui.ctx(), |ui| {
+                println!("in : {}", ui.available_size());
                 ui.style_mut().visuals.faint_bg_color = egui::Color32::TRANSPARENT;
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
@@ -1012,32 +1021,38 @@ impl Player {
                         };
                         let sound = ui.label(egui::RichText::new(sound_icon).font(icon_font_id));
                         let sound_volume_id = ui.make_persistent_id("_sound_volume");
-                        egui::popup_above_or_below_widget(
-                            ui,
-                            sound_volume_id,
-                            &sound,
-                            egui::AboveOrBelow::Above,
-                            egui::PopupCloseBehavior::CloseOnClickOutside,
-                            |ui| {
-                                let mut volume = kits::Volume::int_volume(self.audio_volume.get());
-                                let mut volume_slider = egui::Slider::new(&mut volume, 0..=kits::Volume::MAX_INT_VOLUME).vertical();
-                                volume_slider = volume_slider.show_value(false);
-                                // let mut sound_slider_rect = sound.rect;
-                                // sound_slider_rect.set_bottom(sound.rect.top());
-                                // sound_slider_rect.set_top(sound_slider_rect.top() - 124.0);
-                                ui.set_width(5.0);
-                                ui.set_height(120.0);
-                                ui.style_mut().visuals.faint_bg_color = egui::Color32::TRANSPARENT;
-                                ui.spacing_mut().slider_width = 120.0;
-                                ui.spacing_mut().slider_rail_height = 5.0;
-                                if ui.add(volume_slider).changed() {
-                                    let v = kits::Volume::f64_volume(volume);
-                                    self.audio_volume.set(v);
-                                }
-                            },
-                        );
-                        if sound.hovered() || sound.clicked() {
-                            ui.memory_mut(|it| it.open_popup(sound_volume_id));
+
+                        let icon_margin = 5.;
+                        let sound_slider_outer_height = 75.;
+                        let contraster_alpha: u8 = 100;
+
+                        let mut sound_slider_rect = sound.rect;
+                        sound_slider_rect.set_bottom(sound.rect.top() - icon_margin);
+                        sound_slider_rect.set_top(sound_slider_rect.top() - sound_slider_outer_height);
+
+                        let sound_slider_interact_rect = sound_slider_rect.expand(icon_margin);
+                        let sound_hovered = ui.rect_contains_pointer(sound.rect);
+                        let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_interact_rect);
+                        let sound_anim_id = image_res.id.with("sound_anim");
+                        let mut sound_anim_frac: f32 = ui.ctx().memory_mut(|m| *m.data.get_temp_mut_or_default(sound_anim_id));
+                        sound_anim_frac = ui
+                            .ctx()
+                            .animate_bool_with_time(sound_anim_id, sound_hovered || (sound_slider_hovered && sound_anim_frac > 0.), 0.2);
+                        ui.ctx().memory_mut(|m| m.data.insert_temp(sound_anim_id, sound_anim_frac));
+                        let sound_slider_bg_color = egui::Color32::from_black_alpha(contraster_alpha).linear_multiply(sound_anim_frac);
+                        let sound_bar_color = egui::Color32::from_white_alpha(contraster_alpha).linear_multiply(sound_anim_frac);
+                        let mut sound_bar_rect = sound_slider_rect;
+                        sound_bar_rect.set_top(sound_bar_rect.bottom() - audio_volume_frac as f32 * sound_bar_rect.height());
+
+                        ui.painter().rect_filled(sound_slider_rect, egui::Rounding::same(5.), sound_slider_bg_color);
+
+                        ui.painter().rect_filled(sound_bar_rect, egui::Rounding::same(5.), sound_bar_color);
+                        let sound_slider_resp = ui.interact(sound_slider_rect, image_res.id.with("sound_slider_sense"), egui::Sense::click_and_drag());
+                        if sound_anim_frac > 0. && sound_slider_resp.clicked() || sound_slider_resp.dragged() {
+                            if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
+                                let sound_frac = 1. - ((hover_pos - sound_slider_rect.left_top()).y / sound_slider_rect.height()).max(0.).min(1.);
+                                self.audio_volume.set(sound_frac as f64 * kits::Volume::MAX_INT_VOLUME as f64);
+                            }
                         }
                     });
                 });
