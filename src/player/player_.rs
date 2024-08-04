@@ -9,7 +9,7 @@ use egui::{load::SizedTexture, Ui, Visuals};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use ringbuf::traits::Split;
 
-use crate::kits::{Eguis, Shared, TextureHandleNoMut};
+use crate::kits::{Shared, TextureHandleNoMut};
 use crate::player::audio::{AudioDevice, AudioPlayFrame};
 use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
 use crate::player::kits::RingBufferProducer;

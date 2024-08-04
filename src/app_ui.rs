@@ -5,7 +5,7 @@ use std::{fs, path};
 use eframe::Theme;
 
 use crate::kits::Shared;
-use crate::player::{kits::FfmpegKit, CommandGo, CommandUi, Player, PlayerState};
+use crate::player::{kits::FfmpegKit, CommandGo, CommandUi, Player};
 use crate::{kits, player};
 
 pub struct AppUi {
