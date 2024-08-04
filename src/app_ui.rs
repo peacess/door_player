@@ -54,18 +54,9 @@ impl AppUi {
                             let v = player::kits::Volume::minus_volume(player.audio_volume.get());
                             player.audio_volume.set(v);
                         }
-                        egui::Key::Space => match player.player_state.get() {
-                            PlayerState::Stopped => {
-                                player.start();
-                            }
-                            PlayerState::Paused => {
-                                player.resume();
-                            }
-                            PlayerState::Playing => {
-                                player.pause();
-                            }
-                            _ => {}
-                        },
+                        egui::Key::Space => {
+                            player.clicked_player();
+                        }
                         egui::Key::PageDown => {
                             let file = AppUi::next_file(&self.media_path);
                             self.open_file(ctx, file.into());
@@ -79,26 +70,6 @@ impl AppUi {
                         }
                         _ => {}
                     },
-                    egui::Event::PointerButton {
-                        button: egui::PointerButton::Primary,
-                        pressed: false,
-                        ..
-                    } => {
-                        if ui.rect_contains_pointer(ctx.available_rect()) {
-                            match player.player_state.get() {
-                                PlayerState::Stopped => {
-                                    player.start();
-                                }
-                                PlayerState::Paused => {
-                                    player.resume();
-                                }
-                                PlayerState::Playing => {
-                                    player.pause();
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
                     _ => {}
                 }
             } else {
@@ -370,9 +341,9 @@ impl AppUi {
 
     fn main_frame(&mut self, ctx: &egui::Context, frame: egui::Frame) {
         self.right_panel(ctx, frame);
-        egui::CentralPanel::default().frame(frame).show(ctx, |ui| {
+        egui::CentralPanel::default().frame(frame).show(ctx, |rigth_ui| {
             {
-                let file = ui.input(|s| match s.raw.dropped_files.first() {
+                let file = rigth_ui.input(|s| match s.raw.dropped_files.first() {
                     Some(egui::DroppedFile { path: Some(first), .. }) => Some(first.clone()),
                     _ => None,
                 });
@@ -387,28 +358,26 @@ impl AppUi {
                     } else {
                         AppUi::compute_player_size(
                             egui::Vec2::new(player.width as f32, player.height as f32),
-                            egui::Vec2::new(ui.min_rect().width(), ui.min_rect().height()),
+                            egui::Vec2::new(rigth_ui.min_rect().width(), rigth_ui.min_rect().height()),
                         )
                     }
                 };
-                ui.centered_and_justified(|ui| {
-                    player.ui(ui, [p.x, p.y]);
-                });
+                rigth_ui.centered_and_justified(|ui| player.ui(ui, [p.x, p.y]));
             }
 
             let rect = {
                 const WIDTH: f32 = 30.0;
                 let right_center = egui::Pos2 {
-                    x: ui.min_rect().right() - WIDTH / 2.0,
-                    y: ui.min_rect().center().y,
+                    x: rigth_ui.min_rect().right() - WIDTH / 2.0,
+                    y: rigth_ui.min_rect().center().y,
                 };
                 egui::Rect::from_center_size(right_center, egui::Vec2::splat(WIDTH))
             };
-            let button = ui.put(rect, egui::Button::new(self.collapse_str()).small());
+            let button = rigth_ui.put(rect, egui::Button::new(self.collapse_str()).small());
             if button.clicked() {
                 self.collapse = !self.collapse;
             } else {
-                self.handle_key_player(ui, ctx);
+                self.handle_key_player(rigth_ui, ctx);
             }
         });
     }

@@ -956,118 +956,18 @@ impl Player {
         self.process_state();
         response
     }
+
     fn render_status(&mut self, ui: &mut Ui, image_res: &egui::Response) -> Option<egui::Rect> {
-        if ui.input(|e| e.pointer.is_moving()) {
-            self.mouth_move_ts = Utc::now().timestamp_millis();
-            let cursor = ui.ctx().output(|o| o.cursor_icon);
-            if cursor == egui::CursorIcon::None {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Default);
+        {
+            let temp_image_res = ui.interact(image_res.rect, image_res.id.with("image_sense"), egui::Sense::click());
+
+            if temp_image_res.clicked() {
+                self.clicked_player();
+            }
+            if temp_image_res.double_clicked() {
+                self.command_ui.set(CommandUi::FullscreenToggle);
             }
         }
-        let show_status = { Utc::now().timestamp_millis() - self.mouth_move_ts < MAX_DIFF_MOVE_MOUSE };
-        let is_stopped = self.player_state.get() == PlayerState::Stopped;
-        let is_paused = self.player_state.get() == PlayerState::Paused;
-        let currently_seeking = matches!(self.player_state.get(), PlayerState::Seeking(_));
-        if show_status {
-            const height: f32 = 120.0;
-            let mut area_rect = image_res.rect.clone();
-            *area_rect.top_mut() = area_rect.bottom() - height;
-            // println!("{}", area_rect);
-            let id = egui::Id::new("_player_status_area");
-            let mut area = egui::Area::new(id)
-                // .kind(egui::UiKind::BottomPanel)
-                .order(egui::Order::Foreground)
-                .default_width(area_rect.width())
-                .default_height(area_rect.height())
-                .constrain_to(area_rect)
-                .current_pos(area_rect.left_top())
-                .sense(egui::Sense::click_and_drag());
-            println!("out: {}", ui.available_size());
-            //ctx.memory(|mem| mem.areas().get(id).copied())
-            area.show(ui.ctx(), |ui| {
-                println!("in : {}", ui.available_size());
-                ui.style_mut().visuals.faint_bg_color = egui::Color32::TRANSPARENT;
-                ui.horizontal(|ui| {
-                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                        let pause_icon = if is_paused {
-                            "▶"
-                        } else if is_stopped {
-                            "◼"
-                        } else if currently_seeking {
-                            "↔"
-                        } else {
-                            "⏸"
-                        };
-
-                        ui.label(pause_icon);
-                        ui.label(self.duration_text().as_str());
-                    });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let audio_volume_frac = self.audio_volume.get();
-                        let sound_icon = if self.get_mute() {
-                            "🔇"
-                        } else if audio_volume_frac > 0.7 {
-                            "🔊"
-                        } else if audio_volume_frac > 0.4 {
-                            "🔉"
-                        } else if audio_volume_frac > 0. {
-                            "🔈"
-                        } else {
-                            "🔇"
-                        };
-                        let icon_font_id = egui::FontId {
-                            size: 16.0,
-                            ..std::default::Default::default()
-                        };
-                        let sound = ui.label(egui::RichText::new(sound_icon).font(icon_font_id));
-                        let sound_volume_id = ui.make_persistent_id("_sound_volume");
-
-                        let icon_margin = 5.;
-                        let sound_slider_outer_height = 75.;
-                        let contraster_alpha: u8 = 100;
-
-                        let mut sound_slider_rect = sound.rect;
-                        sound_slider_rect.set_bottom(sound.rect.top() - icon_margin);
-                        sound_slider_rect.set_top(sound_slider_rect.top() - sound_slider_outer_height);
-
-                        let sound_slider_interact_rect = sound_slider_rect.expand(icon_margin);
-                        let sound_hovered = ui.rect_contains_pointer(sound.rect);
-                        let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_interact_rect);
-                        let sound_anim_id = image_res.id.with("sound_anim");
-                        let mut sound_anim_frac: f32 = ui.ctx().memory_mut(|m| *m.data.get_temp_mut_or_default(sound_anim_id));
-                        sound_anim_frac = ui
-                            .ctx()
-                            .animate_bool_with_time(sound_anim_id, sound_hovered || (sound_slider_hovered && sound_anim_frac > 0.), 0.2);
-                        ui.ctx().memory_mut(|m| m.data.insert_temp(sound_anim_id, sound_anim_frac));
-                        let sound_slider_bg_color = egui::Color32::from_black_alpha(contraster_alpha).linear_multiply(sound_anim_frac);
-                        let sound_bar_color = egui::Color32::from_white_alpha(contraster_alpha).linear_multiply(sound_anim_frac);
-                        let mut sound_bar_rect = sound_slider_rect;
-                        sound_bar_rect.set_top(sound_bar_rect.bottom() - audio_volume_frac as f32 * sound_bar_rect.height());
-
-                        ui.painter().rect_filled(sound_slider_rect, egui::Rounding::same(5.), sound_slider_bg_color);
-
-                        ui.painter().rect_filled(sound_bar_rect, egui::Rounding::same(5.), sound_bar_color);
-                        let sound_slider_resp = ui.interact(sound_slider_rect, image_res.id.with("sound_slider_sense"), egui::Sense::click_and_drag());
-                        if sound_anim_frac > 0. && sound_slider_resp.clicked() || sound_slider_resp.dragged() {
-                            if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
-                                let sound_frac = 1. - ((hover_pos - sound_slider_rect.left_top()).y / sound_slider_rect.height()).max(0.).min(1.);
-                                self.audio_volume.set(sound_frac as f64 * kits::Volume::MAX_INT_VOLUME as f64);
-                            }
-                        }
-                    });
-                });
-                ui.horizontal(|ui| {
-                    let mut value = self.duration * (self.video_elapsed_ms.get()) / self.duration_ms;
-                    let seek_bar = egui::Slider::new(&mut value, 0i64..=self.duration).show_value(false).trailing_fill(true);
-                    ui.spacing_mut().slider_width = ui.available_width();
-                    ui.spacing_mut().slider_rail_height = 3.0;
-                    ui.add(seek_bar);
-                });
-            });
-        }
-        None
-    }
-    fn render_ui(&mut self, ui: &mut Ui, image_res: &egui::Response) -> Option<egui::Rect> {
         let hovered = ui.rect_contains_pointer(image_res.rect);
         let currently_seeking = matches!(self.player_state.get(), PlayerState::Seeking(_));
         let is_stopped = self.player_state.get() == PlayerState::Stopped;
@@ -1084,11 +984,9 @@ impl Player {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::Default);
                 }
             }
-        };
+        }
 
         if (is_paused || is_stopped || currently_seeking || self.show_seekbar()) && seekbar_anim_frac > 0. {
-            let front_painter = Eguis::front_painter(ui.ctx());
-            let mut painter_ui = Eguis::ui_from_painter(&front_painter);
             let seekbar_width_offset = 20.;
             let full_seek_bar_width = image_res.rect.width() - seekbar_width_offset;
 
@@ -1101,15 +999,14 @@ impl Player {
 
             let mut seekbar_rect = egui::Rect::from_min_size(seekbar_pos, egui::vec2(seekbar_width, seekbar_height));
             let seekbar_interact_rect = full_seek_bar_rect.expand(10.);
-            painter_ui.interact(seekbar_interact_rect, image_res.id, egui::Sense::drag());
+            ui.interact(seekbar_interact_rect, image_res.id, egui::Sense::drag());
 
-            let seekbar_response = painter_ui.interact(seekbar_interact_rect, image_res.id.with("seekbar"), egui::Sense::click_and_drag());
+            let seekbar_response = ui.interact(seekbar_interact_rect, image_res.id.with("seekbar"), egui::Sense::click_and_drag());
 
             let seekbar_hovered = seekbar_response.hovered();
-            let seekbar_hover_anim_frac =
-                front_painter
-                    .ctx()
-                    .animate_bool_with_time(image_res.id.with("seekbar_hover_anim"), seekbar_hovered || currently_seeking, 0.2);
+            let seekbar_hover_anim_frac = ui
+                .ctx()
+                .animate_bool_with_time(image_res.id.with("seekbar_hover_anim"), seekbar_hovered || currently_seeking, 0.2);
 
             if seekbar_hover_anim_frac > 0. {
                 let new_top = full_seek_bar_rect.top() - (3. * seekbar_hover_anim_frac);
@@ -1117,7 +1014,7 @@ impl Player {
                 seekbar_rect.set_top(new_top);
             }
 
-            let seek_indicator_anim = front_painter
+            let seek_indicator_anim = ui
                 .ctx()
                 .animate_bool_with_time(image_res.id.with("seek_indicator_anim"), currently_seeking, 0.1);
 
@@ -1125,8 +1022,8 @@ impl Player {
                 let mut seek_indicator_shadow = Visuals::dark().window_shadow;
                 seek_indicator_shadow.color = seek_indicator_shadow.color.linear_multiply(seek_indicator_anim);
                 let spinner_size = 20. * seek_indicator_anim;
-                front_painter.add(seek_indicator_shadow.as_shape(image_res.rect, egui::Rounding::ZERO));
-                painter_ui.put(
+                ui.painter().add(seek_indicator_shadow.as_shape(image_res.rect, egui::Rounding::ZERO));
+                ui.put(
                     egui::Rect::from_center_size(image_res.rect.center(), egui::Vec2::splat(spinner_size)),
                     egui::Spinner::new().size(spinner_size),
                 );
@@ -1200,13 +1097,22 @@ impl Player {
             let full_seek_bar_color = egui::Color32::GRAY.linear_multiply(seekbar_anim_frac);
             let seekbar_color = egui::Color32::WHITE.linear_multiply(seekbar_anim_frac);
 
-            front_painter.add(shadow_mesh);
+            ui.painter().add(shadow_mesh);
 
-            front_painter.rect_filled(full_seek_bar_rect, egui::Rounding::ZERO, full_seek_bar_color.linear_multiply(0.5));
-            front_painter.rect_filled(seekbar_rect, egui::Rounding::ZERO, seekbar_color);
-            front_painter.text(pause_icon_pos, egui::Align2::LEFT_BOTTOM, pause_icon, icon_font_id.clone(), text_color);
+            ui.painter()
+                .rect_filled(full_seek_bar_rect, egui::Rounding::ZERO, full_seek_bar_color.linear_multiply(0.5));
+            ui.painter().rect_filled(seekbar_rect, egui::Rounding::ZERO, seekbar_color);
+            let pause_icon_rect = ui
+                .painter()
+                .text(pause_icon_pos, egui::Align2::LEFT_BOTTOM, pause_icon, icon_font_id.clone(), text_color);
+            if ui
+                .interact(pause_icon_rect, image_res.id.with("pause_icon_sense"), egui::Sense::click())
+                .clicked()
+            {
+                self.clicked_player();
+            }
 
-            front_painter.text(
+            ui.painter().text(
                 duration_text_pos,
                 egui::Align2::LEFT_BOTTOM,
                 self.duration_text(),
@@ -1215,44 +1121,56 @@ impl Player {
             );
 
             if seekbar_hover_anim_frac > 0. {
-                front_painter.circle_filled(seekbar_rect.right_center(), 7. * seekbar_hover_anim_frac, seekbar_color);
+                ui.painter()
+                    .circle_filled(seekbar_rect.right_center(), 7. * seekbar_hover_anim_frac, seekbar_color);
             }
 
             {
-                if image_res.clicked() {
-                    match self.player_state.get() {
-                        PlayerState::Paused => self.player_state.set(PlayerState::Playing),
-                        PlayerState::Playing => self.player_state.set(PlayerState::Paused),
-                        _ => (),
-                    }
-                }
-                if image_res.double_clicked() {
-                    self.command_ui.set(CommandUi::FullscreenToggle);
-                }
-            }
+                let sound_icon_rect = ui
+                    .painter()
+                    .text(sound_icon_pos, egui::Align2::RIGHT_BOTTOM, sound_icon, icon_font_id.clone(), text_color);
 
-            {
-                let sound_icon_rect = front_painter.text(sound_icon_pos, egui::Align2::RIGHT_BOTTOM, sound_icon, icon_font_id.clone(), text_color);
-
-                if painter_ui
+                if ui
                     .interact(sound_icon_rect, image_res.id.with("sound_icon_sense"), egui::Sense::click())
                     .clicked()
                 {
                     let mute = self.get_mute();
                     self.set_mute(!mute);
                 }
-                let mut sound_slider_rect = sound_icon_rect;
-                sound_slider_rect.set_bottom(sound_icon_rect.top());
-                sound_slider_rect.set_top(sound_slider_rect.top() - 124.0);
 
-                let sound_slider_hovered = painter_ui.rect_contains_pointer(sound_slider_rect);
-                if sound_slider_hovered {
-                    let mut volume = kits::Volume::int_volume(self.audio_volume.get());
-                    let mut volume_slider = egui::Slider::new(&mut volume, 0..=kits::Volume::MAX_INT_VOLUME).vertical();
-                    volume_slider = volume_slider.show_value(false);
-                    if painter_ui.put(sound_slider_rect, volume_slider).changed() {
-                        let v = kits::Volume::f64_volume(volume);
-                        self.audio_volume.set(v);
+                let sound_slider_outer_height = 120.;
+                let icon_margin = 5.;
+                let contraster_alpha: u8 = 100;
+
+                let mut sound_slider_rect = sound_icon_rect;
+                sound_slider_rect.set_bottom(sound_icon_rect.top() - icon_margin);
+                sound_slider_rect.set_top(sound_slider_rect.top() - sound_slider_outer_height);
+                sound_slider_rect.min.x += 2.0;
+                sound_slider_rect.max.x -= 2.0;
+
+                let sound_slider_interact_rect = sound_slider_rect.expand(icon_margin);
+                let sound_hovered = ui.rect_contains_pointer(sound_icon_rect);
+                let sound_slider_hovered = ui.rect_contains_pointer(sound_slider_interact_rect);
+                let sound_anim_id = image_res.id.with("sound_anim");
+                let mut sound_anim_frac: f32 = ui.ctx().memory_mut(|m| *m.data.get_temp_mut_or_default(sound_anim_id));
+                sound_anim_frac = ui
+                    .ctx()
+                    .animate_bool_with_time(sound_anim_id, sound_hovered || (sound_slider_hovered && sound_anim_frac > 0.), 0.2);
+                ui.ctx().memory_mut(|m| m.data.insert_temp(sound_anim_id, sound_anim_frac));
+                let sound_slider_bg_color = egui::Color32::from_black_alpha(contraster_alpha).linear_multiply(sound_anim_frac);
+                let sound_bar_color = egui::Color32::from_white_alpha(contraster_alpha).linear_multiply(sound_anim_frac);
+                let mut sound_bar_rect = sound_slider_rect;
+                sound_bar_rect.set_top(sound_bar_rect.bottom() - audio_volume_frac as f32 * sound_bar_rect.height());
+
+                ui.painter().rect_filled(sound_slider_rect, egui::Rounding::same(5.), sound_slider_bg_color);
+
+                ui.painter().rect_filled(sound_bar_rect, egui::Rounding::same(5.), sound_bar_color);
+                let sound_slider_resp = ui.interact(sound_slider_rect, image_res.id.with("sound_slider_sense"), egui::Sense::click_and_drag());
+                if sound_anim_frac > 0. && sound_slider_resp.clicked() || sound_slider_resp.dragged() {
+                    if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
+                        let sound_frac = 1. - ((hover_pos - sound_slider_rect.left_top()).y / sound_slider_rect.height()).max(0.).min(1.);
+                        // self.audio_volume.set(sound_frac as f64 * kits::Volume::MAX_INT_VOLUME as f64);
+                        self.audio_volume.set(sound_frac as f64);
                     }
                 }
             }
@@ -1291,6 +1209,21 @@ impl Player {
     // seek in play ctrl
     pub fn reset(&mut self) {
         self.seek(0);
+    }
+
+    pub fn clicked_player(&mut self) {
+        match self.player_state.get() {
+            PlayerState::Stopped => {
+                self.start();
+            }
+            PlayerState::Paused => {
+                self.resume();
+            }
+            PlayerState::Playing => {
+                self.pause();
+            }
+            _ => {}
+        }
     }
 
     /// 此方法最好在 [PlayerState::Paused] 时使用。
