@@ -181,7 +181,7 @@ impl Player {
                 tab_seek_ms: 0,
                 mouth_move_ts: Utc::now().timestamp_millis(),
                 command_ui,
-                video_audio_rs: VideoAudioRS::new(),
+                video_audio_rs: VideoAudioRS::default(),
             }
         };
         if let Some(video_decoder) = &video_decoder {

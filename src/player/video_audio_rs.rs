@@ -1,6 +1,6 @@
 use crate::player::{AudioPlayFrame, VideoPlayFrame};
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct VideoAudioRS {
     pub video_packet_receiver: Option<kanal::Receiver<Option<ffmpeg::Packet>>>,
     pub video_packet_sender: Option<kanal::Sender<Option<ffmpeg::Packet>>>,
@@ -16,20 +16,6 @@ pub struct VideoAudioRS {
 }
 
 impl VideoAudioRS {
-    pub fn new() -> Self {
-        Self {
-            video_packet_receiver: None,
-            video_packet_sender: None,
-            video_play_receiver: None,
-            video_play_sender: None,
-            video_stream_time_base: None,
-            audio_packet_receiver: None,
-            audio_packet_sender: None,
-            audio_play_receiver: None,
-            audio_play_sender: None,
-            audio_stream_time_base: None,
-        }
-    }
     pub fn seek_clean(&self) {
         if let Some(receiver) = &self.video_packet_receiver {
             let size = receiver.len();

@@ -2,7 +2,6 @@ use std::sync::atomic::Ordering;
 
 #[derive(Debug, Default)]
 pub struct Clock {
-    ///
     q2d: f64,
 
     pts: std::sync::atomic::AtomicI64,

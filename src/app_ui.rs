@@ -26,10 +26,11 @@ impl AppUi {
     pub(crate) fn handle_key_player(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         for e in &ui.input(|k| k.events.clone()) {
             if let Some(player) = &mut self.player {
-                match e {
-                    egui::Event::Key {
-                        key, pressed: true, modifiers, ..
-                    } => match key {
+                if let egui::Event::Key {
+                    key, pressed: true, modifiers, ..
+                } = e
+                {
+                    match key {
                         egui::Key::Escape => {
                             self.command_ui.set(CommandUi::Close);
                         }
@@ -69,8 +70,7 @@ impl AppUi {
                             self.command_ui.set(CommandUi::FullscreenToggle);
                         }
                         _ => {}
-                    },
-                    _ => {}
+                    }
                 }
             } else {
                 match e {
@@ -93,11 +93,9 @@ impl AppUi {
                         pressed: false,
                         ..
                     } => {
-                        if self.player.is_none() {
-                            if ui.rect_contains_pointer(ctx.available_rect()) {
-                                if let Some(buf) = Self::select_file() {
-                                    self.open_file(ctx, buf);
-                                }
+                        if self.player.is_none() && ui.rect_contains_pointer(ctx.available_rect()) {
+                            if let Some(buf) = Self::select_file() {
+                                self.open_file(ctx, buf);
                             }
                         }
                     }
@@ -686,7 +684,7 @@ impl AppUi {
                 fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
                 if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     ctx.set_fonts(fonts);
-                    return 0;
+                    0
                 })) {
                     log::error!("{:?}", e);
                 }
