@@ -1,12 +1,9 @@
-use std::default::Default;
-use std::path::PathBuf;
-use std::{fs, path};
-
-use eframe::Theme;
-
 use crate::kits::Shared;
 use crate::player::{kits::FfmpegKit, CommandGo, CommandUi, Player};
 use crate::{kits, player};
+use std::default::Default;
+use std::path::PathBuf;
+use std::{fs, path};
 
 pub struct AppUi {
     collapse: bool,
@@ -256,7 +253,7 @@ impl AppUi {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
 
-                ui.allocate_ui_at_rect(title_bar_rect, |ui| {
+                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(title_bar_rect), |ui| {
                     let button_height = 16.0;
                     let space = 8.0;
                     let close_text = " ❌ ";
@@ -620,7 +617,6 @@ impl AppUi {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
             // follow_system_theme: false,
-            default_theme: Theme::Dark,
             viewport: egui::ViewportBuilder {
                 title: Some(title.to_string()),
                 // decorations: Some(true),
