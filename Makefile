@@ -13,3 +13,6 @@ upgrade:
 	cargo upgrade && cargo update
 format:
 	cargo +nightly-gnu fmt
+
+cp_bin:
+	cp -f target/release/door_player ${HOME}/bin/door_player/
