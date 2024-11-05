@@ -1,5 +1,6 @@
 /target
 /.idea
+/bin
 /src/player/t1.txt
 /src/player/t2.txt
 /01.mp4

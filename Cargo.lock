@@ -1088,7 +1088,6 @@ version = "0.3.14"
 dependencies = [
  "anyhow",
  "atomic",
- "aws-lc-sys",
  "bytemuck",
  "chrono",
  "cpal",

@@ -613,7 +613,7 @@ impl AppUi {
 
     pub fn run_app() {
         let title = "Door Player";
-        let ops = eframe::NativeOptions {
+        let mut ops = eframe::NativeOptions {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
             // follow_system_theme: false,
@@ -627,6 +627,7 @@ impl AppUi {
             },
             ..Default::default()
         };
+        ops.wgpu_options.supported_backends |= eframe::wgpu::Backends::PRIMARY | eframe::wgpu::Backends::SECONDARY;
 
         let re = eframe::run_native(title, ops, Box::new(|cc| Ok(Box::new(AppUi::new(cc, title)))));
         if let Err(e) = re {
