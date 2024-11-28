@@ -17,7 +17,7 @@ egui = { version = "0.29.1" }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
 eframe = { version = "0.29.1",default-features = false, features = ["wgpu","wayland","web_screen_reader","x11"]}
 
-rfd = "0.15.0"
+rfd = "0.15.1"
 ffmpeg-next = {version = "7.1.0", default-features = true}
 #ffmpeg-the-third = {version = "1.2.2+ffmpeg-6.0"}
 #rusty_ffmpeg = "0.13.1+ffmpeg.6.0"
@@ -30,11 +30,11 @@ rust_kits = {version = "0.1.6"}
 #
 parking_lot = "0.12.3"
 atomic = "0.6.0"
-bytemuck = "1.19.0"
+bytemuck = "1.20.0"
 kanal = "0.1.0-pre8"
 
 chrono ="0.4.38"
-anyhow = "1.0.92"
+anyhow = "1.0.93"
 reqwest = { version = "0.12.9", features = ["blocking"] }
 
 # [dev-dependencies]
