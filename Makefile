@@ -15,7 +15,7 @@ format:
 	cargo +nightly fmt
 
 cp_bin:
-	cp -f target/release/door_player ${HOME}/bin/door_player/
+	cp -f target/release/door_player ${HOME}/bin/door_player
 cp_dll:
 	mkdir -p bin
 	cp -f target/release/door_player.exe ./bin/
