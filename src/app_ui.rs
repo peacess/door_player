@@ -4,6 +4,7 @@ use crate::{kits, player};
 use std::default::Default;
 use std::path::PathBuf;
 use std::{fs, path};
+use std::sync::Arc;
 
 pub struct AppUi {
     collapse: bool,
@@ -613,7 +614,7 @@ impl AppUi {
 
     pub fn run_app() {
         let title = "Door Player";
-        let mut ops = eframe::NativeOptions {
+        let ops = eframe::NativeOptions {
             centered: true,
             renderer: eframe::Renderer::Wgpu,
             // follow_system_theme: false,
@@ -627,7 +628,6 @@ impl AppUi {
             },
             ..Default::default()
         };
-        ops.wgpu_options.supported_backends |= eframe::wgpu::Backends::PRIMARY | eframe::wgpu::Backends::SECONDARY;
 
         let re = eframe::run_native(title, ops, Box::new(|cc| Ok(Box::new(AppUi::new(cc, title)))));
         if let Err(e) = re {
@@ -676,7 +676,7 @@ impl AppUi {
                 Ok(t) => t,
             };
             if !bs.is_empty() {
-                fonts.font_data.insert(font_name.clone(), egui::FontData::from_owned(bs));
+                fonts.font_data.insert(font_name.clone(), Arc::new(egui::FontData::from_owned(bs)));
                 fonts.families.get_mut(&egui::FontFamily::Proportional).expect("").insert(0, font_name.clone());
                 fonts.families.get_mut(&egui::FontFamily::Monospace).expect("").push(font_name.clone());
                 if let Err(e) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

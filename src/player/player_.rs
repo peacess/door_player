@@ -1168,7 +1168,7 @@ impl Player {
                 let sound_slider_resp = ui.interact(sound_slider_rect, image_res.id.with("sound_slider_sense"), egui::Sense::click_and_drag());
                 if sound_anim_frac > 0. && sound_slider_resp.clicked() || sound_slider_resp.dragged() {
                     if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
-                        let sound_frac = 1. - ((hover_pos - sound_slider_rect.left_top()).y / sound_slider_rect.height()).max(0.).min(1.);
+                        let sound_frac = 1. - ((hover_pos - sound_slider_rect.left_top()).y / sound_slider_rect.height()).clamp(0., 1.);
                         // self.audio_volume.set(sound_frac as f64 * kits::Volume::MAX_INT_VOLUME as f64);
                         self.audio_volume.set(sound_frac as f64);
                     }
@@ -1226,10 +1226,10 @@ impl Player {
         }
     }
 
-    /// 此方法最好在 [PlayerState::Paused] 时使用。
-    /// 如值为1： 当前是在3号packet frame, 那么它会跳过当前3号，显示4号frame packet,  4-3 = 1。
-    /// 如值为-1: 当前是在3号packet frame, 那么它会跳过当前3号，显示2号frame packet。这个功能现在还不支持。
-    /// 注： 由于dts(Decoding Time Stamp)与 pts(presentation Time Stamp)是不相同，所以-1的功能实现会有问题，只能通过缓存来解决，内存使用很多，暂时不支持
+    // 此方法最好在 [PlayerState::Paused] 时使用。
+    // 如值为1： 当前是在3号packet frame, 那么它会跳过当前3号，显示4号frame packet,  4-3 = 1。
+    // 如值为-1: 当前是在3号packet frame, 那么它会跳过当前3号，显示2号frame packet。这个功能现在还不支持。
+    // 注： 由于dts(Decoding Time Stamp)与 pts(presentation Time Stamp)是不相同，所以-1的功能实现会有问题，只能通过缓存来解决，内存使用很多，暂时不支持
     // pub fn next_packets(&mut self) {
     //     self.next_packet_frame.set(PacketFrame::Packet);
     // }
