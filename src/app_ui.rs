@@ -3,8 +3,8 @@ use crate::player::{kits::FfmpegKit, CommandGo, CommandUi, Player};
 use crate::{kits, player};
 use std::default::Default;
 use std::path::PathBuf;
-use std::{fs, path};
 use std::sync::Arc;
+use std::{fs, path};
 
 pub struct AppUi {
     collapse: bool,
