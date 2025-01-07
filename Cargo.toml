@@ -17,7 +17,7 @@ egui = { version = "0.30.0" }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
 eframe = { version = "0.30.0",default-features = false, features = ["wgpu","wayland","web_screen_reader","x11"]}
 
-rfd = "0.15.1"
+rfd = "0.15.2"
 ffmpeg-next = {version = "7.1.0", default-features = true}
 #ffmpeg-the-third = {version = "1.2.2+ffmpeg-6.0"}
 #rusty_ffmpeg = "0.13.1+ffmpeg.6.0"
@@ -35,7 +35,7 @@ kanal = "0.1.0-pre8"
 
 chrono ="0.4.39"
 anyhow = "1.0.95"
-reqwest = { version = "0.12.11", features = ["blocking"] }
+reqwest = { version = "0.12.12", features = ["blocking"] }
 
 # [dev-dependencies]
 # aws-lc-sys = "0.22.0"
