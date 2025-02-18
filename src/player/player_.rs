@@ -414,7 +414,7 @@ impl Player {
                                     //todo delay
                                 }
                             }
-                            let re_samples_ref = if frame_resample.is_packed() {
+                            let re_samples_ref: &[f32] = if frame_resample.is_packed() {
                                 Self::packed(&frame_resample)
                             } else {
                                 frame_resample.plane(0)
@@ -1022,7 +1022,7 @@ impl Player {
                 let mut seek_indicator_shadow = Visuals::dark().window_shadow;
                 seek_indicator_shadow.color = seek_indicator_shadow.color.linear_multiply(seek_indicator_anim);
                 let spinner_size = 20. * seek_indicator_anim;
-                ui.painter().add(seek_indicator_shadow.as_shape(image_res.rect, egui::Rounding::ZERO));
+                ui.painter().add(seek_indicator_shadow.as_shape(image_res.rect, egui::CornerRadius::ZERO));
                 ui.put(
                     egui::Rect::from_center_size(image_res.rect.center(), egui::Vec2::splat(spinner_size)),
                     egui::Spinner::new().size(spinner_size),
@@ -1092,7 +1092,7 @@ impl Player {
 
             let mut shadow_rect = image_res.rect;
             shadow_rect.set_top(shadow_rect.bottom() - seekbar_offset - 10.);
-            let shadow_mesh = shadow.as_shape(shadow_rect, egui::Rounding::ZERO);
+            let shadow_mesh = shadow.as_shape(shadow_rect, egui::CornerRadius::ZERO);
 
             let full_seek_bar_color = egui::Color32::GRAY.linear_multiply(seekbar_anim_frac);
             let seekbar_color = egui::Color32::WHITE.linear_multiply(seekbar_anim_frac);
@@ -1100,8 +1100,8 @@ impl Player {
             ui.painter().add(shadow_mesh);
 
             ui.painter()
-                .rect_filled(full_seek_bar_rect, egui::Rounding::ZERO, full_seek_bar_color.linear_multiply(0.5));
-            ui.painter().rect_filled(seekbar_rect, egui::Rounding::ZERO, seekbar_color);
+                .rect_filled(full_seek_bar_rect, egui::CornerRadius::ZERO, full_seek_bar_color.linear_multiply(0.5));
+            ui.painter().rect_filled(seekbar_rect, egui::CornerRadius::ZERO, seekbar_color);
             let pause_icon_rect = ui
                 .painter()
                 .text(pause_icon_pos, egui::Align2::LEFT_BOTTOM, pause_icon, icon_font_id.clone(), text_color);
@@ -1162,9 +1162,9 @@ impl Player {
                 let mut sound_bar_rect = sound_slider_rect;
                 sound_bar_rect.set_top(sound_bar_rect.bottom() - audio_volume_frac as f32 * sound_bar_rect.height());
 
-                ui.painter().rect_filled(sound_slider_rect, egui::Rounding::same(5.), sound_slider_bg_color);
+                ui.painter().rect_filled(sound_slider_rect, egui::CornerRadius::same(5), sound_slider_bg_color);
 
-                ui.painter().rect_filled(sound_bar_rect, egui::Rounding::same(5.), sound_bar_color);
+                ui.painter().rect_filled(sound_bar_rect, egui::CornerRadius::same(5), sound_bar_color);
                 let sound_slider_resp = ui.interact(sound_slider_rect, image_res.id.with("sound_slider_sense"), egui::Sense::click_and_drag());
                 if sound_anim_frac > 0. && sound_slider_resp.clicked() || sound_slider_resp.dragged() {
                     if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
