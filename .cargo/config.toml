@@ -1,0 +1,13 @@
+[source.crates-io]
+replace-with = 'rsproxy'
+[source.rsproxy]
+registry = "sparse+https://rsproxy.cn/index/"
+[source.tsinghua]
+registry = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/"
+[source.ustc]
+registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+
+#[build]
+#jobs = 10
+#rustflags = ["-C", "target-cpu=native"]
+

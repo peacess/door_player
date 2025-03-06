@@ -1,21 +1,22 @@
-use std::default::Default;
-use std::ops::Deref;
-use std::sync::Arc;
-use std::time::UNIX_EPOCH;
-use std::{fs, path};
+use std::{default::Default, fs, ops::Deref, path, sync::Arc, time::UNIX_EPOCH};
 
 use chrono::{DateTime, Utc};
 use egui::{load::SizedTexture, Ui, Visuals};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use ringbuf::traits::Split;
 
-use crate::kits::{Shared, TextureHandleNoMut};
-use crate::player::audio::{AudioDevice, AudioPlayFrame};
-use crate::player::consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE};
-use crate::player::kits::RingBufferProducer;
-use crate::player::play_ctrl::PlayCtrl;
-use crate::player::video::VideoPlayFrame;
-use crate::player::{kits, CommandGo, CommandUi, PlayerState, SubtitlePlayFrame, VideoAudioRS, MAX_DIFF_MOVE_MOUSE};
+use crate::{
+    kits::{Shared, TextureHandleNoMut},
+    player::{
+        audio::{AudioDevice, AudioPlayFrame},
+        consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE},
+        kits,
+        kits::RingBufferProducer,
+        play_ctrl::PlayCtrl,
+        video::VideoPlayFrame,
+        CommandGo, CommandUi, PlayerState, SubtitlePlayFrame, VideoAudioRS, MAX_DIFF_MOVE_MOUSE,
+    },
+};
 
 /// player base ffmpeg, there are 4 threads to player file.
 pub struct Player {
@@ -1359,8 +1360,7 @@ impl Drop for Player {
 
 fn to_sample(sample_format: cpal::SampleFormat) -> ffmpeg::format::Sample {
     use cpal::SampleFormat;
-    use ffmpeg::format::sample::Type as SampleType;
-    use ffmpeg::format::Sample;
+    use ffmpeg::format::{sample::Type as SampleType, Sample};
 
     match &sample_format {
         SampleFormat::I8 => Sample::U8(SampleType::Packed),

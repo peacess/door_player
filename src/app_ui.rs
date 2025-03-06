@@ -1,10 +1,11 @@
-use crate::kits::Shared;
-use crate::player::{kits::FfmpegKit, CommandGo, CommandUi, Player};
-use crate::{kits, player};
-use std::default::Default;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::{fs, path};
+use std::{default::Default, fs, path, path::PathBuf, sync::Arc};
+
+use crate::{
+    kits,
+    kits::Shared,
+    player,
+    player::{kits::FfmpegKit, CommandGo, CommandUi, Player},
+};
 
 pub struct AppUi {
     collapse: bool,

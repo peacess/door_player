@@ -1,5 +1,7 @@
-use ringbuf::traits::{Consumer, Producer, Split};
-use ringbuf::HeapRb;
+use ringbuf::{
+    traits::{Consumer, Producer, Split},
+    HeapRb,
+};
 #[test]
 fn ring_buf_test() {
     let rb = HeapRb::<i32>::new(2);

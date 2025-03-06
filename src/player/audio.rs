@@ -1,7 +1,9 @@
 use std::sync::atomic::Ordering;
 
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::SupportedStreamConfig;
+use cpal::{
+    traits::{DeviceTrait, HostTrait, StreamTrait},
+    SupportedStreamConfig,
+};
 use ringbuf::traits::{Consumer, Observer};
 
 use crate::player::kits::RingBufferConsumer;

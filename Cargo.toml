@@ -1,6 +1,6 @@
 [package]
 name = "door_player"
-version = "0.3.15"
+version = "0.3.16"
 edition = "2021"
 authors = ["Andy <peacess@163.com>"]
 description = "Door Player, Cross by ffmpeg and egui"
@@ -11,11 +11,11 @@ categories = ["multimedia","gui"]
 license = "Apache-2.0"
 
 [dependencies]
-log = "0.4.25"
+log = "0.4.26"
 env_logger = "0.11.6"
-egui = { version = "0.31.0" }
+egui = { version = "0.31.1" }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
-eframe = { version = "0.31.0",default-features = false, features = ["wgpu","wayland","web_screen_reader","x11"]}
+eframe = { version = "0.31.1",default-features = false, features = ["wgpu","wayland","web_screen_reader","x11"]}
 
 rfd = "0.15.2"
 ffmpeg-next = {version = "7.1.0", default-features = true}
@@ -30,11 +30,11 @@ rust_kits = {version = "0.1.6"}
 #
 parking_lot = "0.12.3"
 atomic = "0.6.0"
-bytemuck = "1.21.0"
+bytemuck = "1.22.0"
 kanal = "0.1.0-pre8"
 
-chrono ="0.4.39"
-anyhow = "1.0.95"
+chrono ="0.4.40"
+anyhow = "1.0.97"
 reqwest = { version = "0.12.12", features = ["blocking"] }
 
 # [dev-dependencies]

@@ -1,17 +1,23 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
 
 use bytemuck::NoUninit;
 use ringbuf::traits::{Observer, Producer};
 
-use crate::kits::{Shared, TextureHandleNoMut};
-use crate::player::audio::{AudioDevice, AudioPlayFrame};
-use crate::player::consts::VIDEO_SYNC_THRESHOLD_MAX;
-use crate::player::video::VideoPlayFrame;
-use crate::player::{
-    kits::{timestamp_to_millisecond, RingBufferProducer},
-    Clock, CommandGo, AV_TIME_BASE_RATIONAL, VIDEO_SYNC_THRESHOLD_MIN,
+use crate::{
+    kits::{Shared, TextureHandleNoMut},
+    player::{
+        audio::{AudioDevice, AudioPlayFrame},
+        consts::VIDEO_SYNC_THRESHOLD_MAX,
+        kits::{timestamp_to_millisecond, RingBufferProducer},
+        video::VideoPlayFrame,
+        Clock, CommandGo, AV_TIME_BASE_RATIONAL, VIDEO_SYNC_THRESHOLD_MIN,
+    },
 };
 
 #[derive(PartialEq, Clone, Copy, Debug)]

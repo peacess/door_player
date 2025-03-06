@@ -1,12 +1,13 @@
-use std::collections::HashSet;
-use std::ffi::{c_void, CStr};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::{fs, path};
+use std::{
+    collections::HashSet,
+    ffi::{c_void, CStr},
+    fs, path,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use ffmpeg::{Rational, Rescale};
-use ringbuf::storage::Heap;
-use ringbuf::SharedRb;
+use ringbuf::{storage::Heap, SharedRb};
 
 use crate::player::MILLISECOND_TIME_BASE;
 

@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-use std::{fs, mem};
+use std::{fs, mem, path::PathBuf};
 
 pub fn get_font() -> Result<PathBuf, anyhow::Error> {
     let file = "assets/fonts/文泉驿正黑.ttc";
