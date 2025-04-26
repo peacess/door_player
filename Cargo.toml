@@ -34,7 +34,7 @@ bytemuck = "1.22.0"
 kanal = "0.1.1"
 
 chrono ="0.4.40"
-anyhow = "1.0.97"
+anyhow = "1.0.98"
 reqwest = { version = "0.12.15", features = ["blocking"] }
 
 # [dev-dependencies]

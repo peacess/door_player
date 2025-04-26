@@ -1,5 +1,6 @@
 /target
 /.idea
+/Zig.iml
 /bin
 /src/player/t1.txt
 /src/player/t2.txt
@@ -15,3 +16,4 @@
 /assets/fonts/文泉驿正黑.ttc
 /恶魔法则16.mp4
 /武动乾坤第4季12超前版.mp4
+

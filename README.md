@@ -20,7 +20,8 @@ Features:
    * Ctrl + Tab -> save current position for "Tab"
 7. Autoplay next file
 8. Decode threads by file size
-9. Other  
+9. Play if the older's status is playing
+10. Other  
 
 # build
 [ffmpeg](https://github.com/zmwangx/rust-ffmpeg/wiki/Notes-on-building)  

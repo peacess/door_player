@@ -392,11 +392,16 @@ impl AppUi {
             let texture_handle = Player::default_texture_handle(ctx);
             match Player::new(ctx, texture_handle, self.command_ui.clone(), &self.media_path) {
                 Ok(mut new_player) => {
+                    let mut played = false;
                     if let Some(old_player) = &self.player {
                         new_player.tab_seek_ms = old_player.tab_seek_ms;
                         new_player.audio_volume.set(old_player.audio_volume.get());
+                        played = old_player.player_state.get() == player::PlayerState::Playing;
                     }
                     self.player = Some(new_player);
+                    if played {
+                        self.player.as_mut().unwrap().start();
+                    }
                     true
                 }
                 Err(e) => {
