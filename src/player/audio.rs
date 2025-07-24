@@ -55,7 +55,7 @@ impl AudioDevice {
             match device.default_output_config() {
                 Ok(c) => c,
                 Err(e) => {
-                    log::error!("{}", e);
+                    log::error!("{e}");
                     // can not get the default config, then get the first supported config
                     let mut configs = device.supported_output_configs()?;
                     match configs.next() {
@@ -74,7 +74,7 @@ impl AudioDevice {
                 Self::write_audio(data, &mut consumer, info);
             },
             |e| {
-                log::error!("{}", e);
+                log::error!("{e}");
             },
             None,
         )?;
@@ -101,10 +101,10 @@ impl AudioDevice {
     fn set_pause(&self, pause: bool) {
         if pause {
             if let Err(e) = self.stream.pause() {
-                log::error!("{}", e);
+                log::error!("{e}");
             }
         } else if let Err(e) = self.stream.play() {
-            log::error!("{}", e);
+            log::error!("{e}");
         }
     }
 

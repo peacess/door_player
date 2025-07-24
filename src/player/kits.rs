@@ -48,7 +48,7 @@ impl FfmpegKit {
         }
         names = HashSet::<String>::from_iter(names).into_iter().collect::<Vec<String>>();
         names.sort();
-        log::info!("all file type: {:?}", names);
+        log::info!("all file type: {names:?}");
         names
     }
 }
@@ -100,7 +100,7 @@ impl SubTitle {
         }
         match fs::read_dir(path_file.parent().unwrap()) {
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return subs;
             }
             Ok(read_dir) => {

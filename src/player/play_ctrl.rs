@@ -185,7 +185,7 @@ impl PlayCtrl {
         self.texture_handle.set(frame.color_image, egui::TextureOptions::LINEAR);
         ctx.request_repaint();
         if delay > 0.0 {
-            log::debug!("video delay: {}", delay);
+            log::debug!("video delay: {delay}");
             spin_sleep::sleep(Duration::from_secs_f64(delay));
         }
         Ok(())

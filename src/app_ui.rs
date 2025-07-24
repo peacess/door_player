@@ -112,7 +112,7 @@ impl AppUi {
         let mut files = Vec::new();
         match fs::read_dir(path_file.parent().unwrap()) {
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return String::default();
             }
             Ok(read_dir) => {
@@ -145,7 +145,7 @@ impl AppUi {
         let mut files = Vec::new();
         match fs::read_dir(path_file.parent().unwrap()) {
             Err(e) => {
-                log::error!("{}", e);
+                log::error!("{e}");
                 return String::default();
             }
             Ok(read_dir) => {
@@ -255,7 +255,7 @@ impl AppUi {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
                 }
 
-                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(title_bar_rect), |ui| {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(title_bar_rect), |ui| {
                     let button_height = 16.0;
                     let space = 8.0;
                     let close_text = " ❌ ";
@@ -405,7 +405,7 @@ impl AppUi {
                     true
                 }
                 Err(e) => {
-                    log::error!("{}", e);
+                    log::error!("{e}");
                     false
                 }
             }
@@ -493,7 +493,7 @@ impl AppUi {
                                 }
                             }
                             if go_packet {
-                                let mut str_amount = format!("{}", go_amount);
+                                let mut str_amount = format!("{go_amount}");
                                 if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
                                     if let Ok(v) = str_amount.parse() {
                                         go_amount = v;
@@ -515,7 +515,7 @@ impl AppUi {
                                 }
                             }
                             if go_frame {
-                                let mut str_amount = format!("{}", go_amount);
+                                let mut str_amount = format!("{go_amount}");
                                 if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
                                     if let Ok(v) = str_amount.parse() {
                                         go_amount = v;
@@ -538,7 +538,7 @@ impl AppUi {
                                 }
                             }
                             if seek_ms {
-                                let mut str_amount = format!("{}", go_amount);
+                                let mut str_amount = format!("{go_amount}");
                                 if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
                                     if let Ok(v) = str_amount.parse() {
                                         go_amount = v;
@@ -622,7 +622,6 @@ impl AppUi {
         let title = "Door Player";
         let ops = eframe::NativeOptions {
             centered: true,
-            renderer: eframe::Renderer::Wgpu,
             // follow_system_theme: false,
             viewport: egui::ViewportBuilder {
                 title: Some(title.to_string()),
@@ -637,7 +636,7 @@ impl AppUi {
 
         let re = eframe::run_native(title, ops, Box::new(|cc| Ok(Box::new(AppUi::new(cc, title)))));
         if let Err(e) = re {
-            log::error!("{:?}", e);
+            log::error!("{e:?}");
         }
     }
 
@@ -666,7 +665,7 @@ impl AppUi {
             let font_file = {
                 match kits::fonts::get_font() {
                     Err(e) => {
-                        log::error!("{}", e);
+                        log::error!("{e}");
                         return;
                     }
                     Ok(p) => p,
@@ -676,7 +675,7 @@ impl AppUi {
             let font_name = String::from(font_file.file_stem().expect("").to_string_lossy());
             let bs = match fs::read(font_file) {
                 Err(e) => {
-                    log::error!("{}", e);
+                    log::error!("{e}");
                     return;
                 }
                 Ok(t) => t,
@@ -689,7 +688,7 @@ impl AppUi {
                     ctx.set_fonts(fonts);
                     0
                 })) {
-                    log::error!("{:?}", e);
+                    log::error!("{e:?}");
                 }
             }
         });
