@@ -29,7 +29,11 @@ Features:
 ## Ubuntu
 
 ```shell
-#   ffmpeg 7
+# ffmpeg 8
+  sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg8
+  sudo apt update
+  sudo apt install ffmpeg
+# ffmpeg 7
    sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg7 
    sudo apt update  
    sudo apt install libass-dev libavdevice-dev ffmpeg  

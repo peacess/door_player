@@ -247,7 +247,7 @@ impl Player {
     }
 
     pub fn default_texture_handle(ctx: &egui::Context) -> TextureHandleNoMut {
-        let image: egui::ImageData = egui::ColorImage::new([124, 124], vec![egui::Color32::TRANSPARENT;124*124]).into();
+        let image: egui::ImageData = egui::ColorImage::new([124, 124], vec![egui::Color32::TRANSPARENT; 124 * 124]).into();
         // see  ctx.load_texture("video_stream_default", img, egui::TextureOptions::LINEAR);
         let name = "video_stream_default".into();
         let max_texture_side = ctx.input(|i| i.max_texture_side);
@@ -290,7 +290,7 @@ impl Player {
             let data_line = &data[begin..end];
             pixels.extend(data_line.chunks_exact(pixel_size_bytes).map(|p| egui::Color32::from_rgb(p[0], p[1], p[2])))
         }
-        Ok(egui::ColorImage::new( size, pixels))
+        Ok(egui::ColorImage::new(size, pixels))
     }
 
     //, time_base_video: ffmpeg::Rational
