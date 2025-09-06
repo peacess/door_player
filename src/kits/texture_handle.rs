@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use eframe::epaint::{emath::NumExt, mutex::RwLock, textures::TextureOptions, ImageData, ImageDelta, TextureId, TextureManager};
+use eframe::epaint::{ImageData, ImageDelta, TextureId, TextureManager, emath::NumExt, mutex::RwLock, textures::TextureOptions};
 
 /// Used to paint images.
 ///

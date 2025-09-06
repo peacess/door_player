@@ -1,13 +1,13 @@
 use std::{
     collections::HashSet,
-    ffi::{c_void, CStr},
+    ffi::{CStr, c_void},
     fs, path,
     path::PathBuf,
     sync::Arc,
 };
 
 use ffmpeg::{Rational, Rescale};
-use ringbuf::{storage::Heap, SharedRb};
+use ringbuf::{SharedRb, storage::Heap};
 
 use crate::player::MILLISECOND_TIME_BASE;
 
@@ -109,12 +109,13 @@ impl SubTitle {
                 let exs = ["srt", "ass", "ssa", "sub", "smi"]; // array is better than mam/set
                 for ff in read_dir.flatten() {
                     let n = ff.file_name().to_str().expect("").to_string();
-                    if file_name != ff.file_name() && n.starts_with(&no_ex) {
-                        if let Some(ex_name) = ff.path().extension() {
-                            let t = ex_name.to_str().expect("");
-                            if exs.contains(&t) {
-                                subs.push(ff.path());
-                            }
+                    if file_name != ff.file_name()
+                        && n.starts_with(&no_ex)
+                        && let Some(ex_name) = ff.path().extension()
+                    {
+                        let t = ex_name.to_str().expect("");
+                        if exs.contains(&t) {
+                            subs.push(ff.path());
                         }
                     }
                 }

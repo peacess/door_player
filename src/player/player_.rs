@@ -1,20 +1,20 @@
 use std::{default::Default, fs, ops::Deref, path, sync::Arc, time::UNIX_EPOCH};
 
 use chrono::{DateTime, Utc};
-use egui::{load::SizedTexture, Ui, Visuals};
+use egui::{Ui, Visuals, load::SizedTexture};
 use ffmpeg::software::resampling::Context as ResamplingContext;
 use ringbuf::traits::Split;
 
 use crate::{
     kits::{Shared, TextureHandleNoMut},
     player::{
+        CommandGo, CommandUi, MAX_DIFF_MOVE_MOUSE, PlayerState, SubtitlePlayFrame, VideoAudioRS,
         audio::{AudioDevice, AudioPlayFrame},
         consts::{AUDIO_FRAME_QUEUE_SIZE, AUDIO_PACKET_QUEUE_SIZE, PLAY_MIN_INTERVAL, VIDEO_FRAME_QUEUE_SIZE, VIDEO_PACKET_QUEUE_SIZE},
         kits,
         kits::RingBufferProducer,
         play_ctrl::PlayCtrl,
         video::VideoPlayFrame,
-        CommandGo, CommandUi, PlayerState, SubtitlePlayFrame, VideoAudioRS, MAX_DIFF_MOVE_MOUSE,
     },
 };
 
@@ -66,11 +66,7 @@ impl Player {
                                 Err(_) => 1,
                                 Ok(t) => t.len(),
                             };
-                            if l >= 3 * 1024 * 1024 * 1024 {
-                                2
-                            } else {
-                                1
-                            }
+                            if l >= 3 * 1024 * 1024 * 1024 { 2 } else { 1 }
                         };
                         if thread_count > 1 {
                             thread_conf.count = thread_count;
@@ -110,11 +106,7 @@ impl Player {
                             Err(_) => 1,
                             Ok(t) => t.len(),
                         };
-                        if l >= 3 * 1024 * 1024 * 1024 {
-                            2
-                        } else {
-                            1
-                        }
+                        if l >= 3 * 1024 * 1024 * 1024 { 2 } else { 1 }
                     };
                     if thread_count > 1 {
                         thread_conf.count = thread_count;
@@ -541,50 +533,8 @@ impl Player {
         let width = video_decoder.width() as usize;
         let height = video_decoder.height() as usize;
 
-        let _ = std::thread::Builder::new().name("video decode".to_string()).spawn(move || 'RUN: loop {
-            match play_ctrl.player_state.get() {
-                PlayerState::Stopped => {
-                    log::info!("video decode exit");
-                    break 'RUN;
-                }
-                PlayerState::EndOfFile => {}
-                PlayerState::Seeking(_) => {}
-                PlayerState::Paused => {
-                    spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                    continue 'RUN;
-                }
-                PlayerState::Playing => {}
-                PlayerState::Restarting => {}
-            }
-
-            match video_packet_receiver.try_recv() {
-                Err(e) => {
-                    log::error!("{e}");
-                    // spin_sleep::sleep(PLAY_MIN_INTERVAL);
-                }
-                Ok(Some(Some(packet))) => {
-                    if let Err(e) = video_decoder.send_packet(&packet) {
-                        log::error!("{e}");
-                    }
-                    // spin_sleep::sleep(std::time::Duration::from_millis(2));
-                }
-                Ok(None) => {
-                    spin_sleep::sleep(std::time::Duration::from_millis(2));
-                    continue;
-                }
-                Ok(Some(None)) => {
-                    //receive all frame
-                    let mut temp = ffmpeg::frame::Video::empty();
-                    for _ in 0..20 {
-                        if video_decoder.receive_frame(&mut temp).is_err() {
-                            break;
-                        }
-                    }
-                    spin_sleep::sleep(std::time::Duration::from_millis(2));
-                    continue;
-                }
-            }
-            loop {
+        let _ = std::thread::Builder::new().name("video decode".to_string()).spawn(move || {
+            'RUN: loop {
                 match play_ctrl.player_state.get() {
                     PlayerState::Stopped => {
                         log::info!("video decode exit");
@@ -599,68 +549,112 @@ impl Player {
                     PlayerState::Playing => {}
                     PlayerState::Restarting => {}
                 }
-                let mut v_frame = ffmpeg::frame::Video::empty();
-                if let Err(e) = video_decoder.receive_frame(&mut v_frame) {
-                    log::debug!("{e}");
-                    continue 'RUN;
-                } else {
-                    let mut err_count = 0;
-                    let frame = {
-                        match graph {
-                            None => v_frame,
-                            Some(ref mut graph) => loop {
-                                let mut filter_frame = ffmpeg::frame::Video::empty();
-                                if let Err(e) = graph.get("in").expect("").source().add(&v_frame) {
-                                    log::error!("{e}");
-                                    continue 'RUN;
-                                }
 
-                                if let Err(e) = graph.get("out").expect("").sink().frame(&mut filter_frame) {
-                                    log::error!("{e}");
-                                    err_count += 1;
-                                } else {
-                                    break filter_frame;
-                                }
-                                if err_count > 3 {
-                                    continue 'RUN;
-                                }
-                            },
-                        }
-                    };
-                    let color_image = match Self::frame_to_color_image(&frame) {
-                        Err(e) => {
-                            log::error!("{e}");
-                            continue;
-                        }
-                        Ok(t) => t,
-                    };
-
-                    let (duration, pts) = {
-                        let packet_frame = frame.packet();
-                        let pts = frame.pts().unwrap_or_else(|| {
-                            log::debug!("Frame pts is none");
-                            frame.timestamp().unwrap_or_else(|| unsafe {
-                                match (*frame.as_ptr()).pkt_dts {
-                                    ffmpeg::ffi::AV_NOPTS_VALUE => 0,
-                                    t => t,
-                                }
-                            })
-                        });
-                        (packet_frame.duration, pts)
-                    };
-
-                    let video_frame = VideoPlayFrame {
-                        width,
-                        height,
-                        pts,
-                        duration,
-                        timestamp: frame.timestamp().unwrap_or_default(),
-                        color_image,
-                    };
-                    if let Err(e) = video_play_sender.send(video_frame) {
+                match video_packet_receiver.try_recv() {
+                    Err(e) => {
                         log::error!("{e}");
+                        // spin_sleep::sleep(PLAY_MIN_INTERVAL);
                     }
-                    // spin_sleep::sleep(std::time::Duration::from_millis(2));
+                    Ok(Some(Some(packet))) => {
+                        if let Err(e) = video_decoder.send_packet(&packet) {
+                            log::error!("{e}");
+                        }
+                        // spin_sleep::sleep(std::time::Duration::from_millis(2));
+                    }
+                    Ok(None) => {
+                        spin_sleep::sleep(std::time::Duration::from_millis(2));
+                        continue;
+                    }
+                    Ok(Some(None)) => {
+                        //receive all frame
+                        let mut temp = ffmpeg::frame::Video::empty();
+                        for _ in 0..20 {
+                            if video_decoder.receive_frame(&mut temp).is_err() {
+                                break;
+                            }
+                        }
+                        spin_sleep::sleep(std::time::Duration::from_millis(2));
+                        continue;
+                    }
+                }
+                loop {
+                    match play_ctrl.player_state.get() {
+                        PlayerState::Stopped => {
+                            log::info!("video decode exit");
+                            break 'RUN;
+                        }
+                        PlayerState::EndOfFile => {}
+                        PlayerState::Seeking(_) => {}
+                        PlayerState::Paused => {
+                            spin_sleep::sleep(PLAY_MIN_INTERVAL);
+                            continue 'RUN;
+                        }
+                        PlayerState::Playing => {}
+                        PlayerState::Restarting => {}
+                    }
+                    let mut v_frame = ffmpeg::frame::Video::empty();
+                    if let Err(e) = video_decoder.receive_frame(&mut v_frame) {
+                        log::debug!("{e}");
+                        continue 'RUN;
+                    } else {
+                        let mut err_count = 0;
+                        let frame = {
+                            match graph {
+                                None => v_frame,
+                                Some(ref mut graph) => loop {
+                                    let mut filter_frame = ffmpeg::frame::Video::empty();
+                                    if let Err(e) = graph.get("in").expect("").source().add(&v_frame) {
+                                        log::error!("{e}");
+                                        continue 'RUN;
+                                    }
+
+                                    if let Err(e) = graph.get("out").expect("").sink().frame(&mut filter_frame) {
+                                        log::error!("{e}");
+                                        err_count += 1;
+                                    } else {
+                                        break filter_frame;
+                                    }
+                                    if err_count > 3 {
+                                        continue 'RUN;
+                                    }
+                                },
+                            }
+                        };
+                        let color_image = match Self::frame_to_color_image(&frame) {
+                            Err(e) => {
+                                log::error!("{e}");
+                                continue;
+                            }
+                            Ok(t) => t,
+                        };
+
+                        let (duration, pts) = {
+                            let packet_frame = frame.packet();
+                            let pts = frame.pts().unwrap_or_else(|| {
+                                log::debug!("Frame pts is none");
+                                frame.timestamp().unwrap_or_else(|| unsafe {
+                                    match (*frame.as_ptr()).pkt_dts {
+                                        ffmpeg::ffi::AV_NOPTS_VALUE => 0,
+                                        t => t,
+                                    }
+                                })
+                            });
+                            (packet_frame.duration, pts)
+                        };
+
+                        let video_frame = VideoPlayFrame {
+                            width,
+                            height,
+                            pts,
+                            duration,
+                            timestamp: frame.timestamp().unwrap_or_default(),
+                            color_image,
+                        };
+                        if let Err(e) = video_play_sender.send(video_frame) {
+                            log::error!("{e}");
+                        }
+                        // spin_sleep::sleep(std::time::Duration::from_millis(2));
+                    }
                 }
             }
         });
@@ -746,55 +740,57 @@ impl Player {
         subtitle_play_sender: kanal::Sender<SubtitlePlayFrame>,
     ) {
         let play_ctrl = self.play_ctrl.clone();
-        let _ = std::thread::Builder::new().name("subtitle decode".to_string()).spawn(move || loop {
-            if PlayerState::Stopped == play_ctrl.player_state.get() {
-                log::info!("subtitle decode exit");
-                break;
-            }
-            // use ffmpeg and ass to render subtitle
-
-            match subtitle_packet_receiver.recv() {
-                Err(e) => {
-                    log::error!("{e}");
+        let _ = std::thread::Builder::new().name("subtitle decode".to_string()).spawn(move || {
+            loop {
+                if PlayerState::Stopped == play_ctrl.player_state.get() {
+                    log::info!("subtitle decode exit");
+                    break;
                 }
-                Ok(None) => {}
-                Ok(Some(packet)) => {
-                    let mut sub = ffmpeg::Subtitle::default();
-                    match subtitle_decoder.decode(&packet, &mut sub) {
-                        Err(e) => {
-                            log::error!("{e}");
-                        }
-                        Ok(b) => {
-                            if b {
-                                let mut subtitle_frame = SubtitlePlayFrame {
-                                    pts: sub.pts().unwrap_or_default() as f64,
-                                    duration: packet.duration(),
-                                    ..Default::default()
-                                };
-                                let mut sub_text = String::default();
-                                for rect in sub.rects() {
-                                    let line = match rect {
-                                        ffmpeg::subtitle::Rect::None(_) => String::default(),
-                                        ffmpeg::subtitle::Rect::Bitmap(bitmap) => {
-                                            subtitle_frame.width = bitmap.width();
-                                            subtitle_frame.height = bitmap.height();
-                                            //todo
-                                            String::default()
-                                        }
-                                        ffmpeg::subtitle::Rect::Text(text) => text.get().to_string(),
-                                        ffmpeg::subtitle::Rect::Ass(ass) => ass.get().to_string(),
-                                    };
-                                    if sub_text.is_empty() {
-                                        sub_text = line;
-                                    } else {
-                                        sub_text.push('\n');
-                                        sub_text.push_str(&line);
-                                    }
-                                }
-                                subtitle_frame.pure_text = sub_text;
+                // use ffmpeg and ass to render subtitle
 
-                                if let Err(e) = subtitle_play_sender.send(subtitle_frame) {
-                                    log::error!("{e}");
+                match subtitle_packet_receiver.recv() {
+                    Err(e) => {
+                        log::error!("{e}");
+                    }
+                    Ok(None) => {}
+                    Ok(Some(packet)) => {
+                        let mut sub = ffmpeg::Subtitle::default();
+                        match subtitle_decoder.decode(&packet, &mut sub) {
+                            Err(e) => {
+                                log::error!("{e}");
+                            }
+                            Ok(b) => {
+                                if b {
+                                    let mut subtitle_frame = SubtitlePlayFrame {
+                                        pts: sub.pts().unwrap_or_default() as f64,
+                                        duration: packet.duration(),
+                                        ..Default::default()
+                                    };
+                                    let mut sub_text = String::default();
+                                    for rect in sub.rects() {
+                                        let line = match rect {
+                                            ffmpeg::subtitle::Rect::None(_) => String::default(),
+                                            ffmpeg::subtitle::Rect::Bitmap(bitmap) => {
+                                                subtitle_frame.width = bitmap.width();
+                                                subtitle_frame.height = bitmap.height();
+                                                //todo
+                                                String::default()
+                                            }
+                                            ffmpeg::subtitle::Rect::Text(text) => text.get().to_string(),
+                                            ffmpeg::subtitle::Rect::Ass(ass) => ass.get().to_string(),
+                                        };
+                                        if sub_text.is_empty() {
+                                            sub_text = line;
+                                        } else {
+                                            sub_text.push('\n');
+                                            sub_text.push_str(&line);
+                                        }
+                                    }
+                                    subtitle_frame.pure_text = sub_text;
+
+                                    if let Err(e) = subtitle_play_sender.send(subtitle_frame) {
+                                        log::error!("{e}");
+                                    }
                                 }
                             }
                         }
@@ -911,12 +907,16 @@ impl Player {
                 for _ in 0..packets {
                     if let Some((_, packet)) = input.packets().next() {
                         if unsafe { !packet.is_empty() } {
-                            if audio_packet_sender.is_some() && packet.stream() == audio_index {
-                                if let Err(e) = audio_packet_sender.as_ref().expect("").send(Some(packet)) {
+                            if let Some(audio_sender) = &audio_packet_sender
+                                && packet.stream() == audio_index
+                            {
+                                if let Err(e) = audio_sender.send(Some(packet)) {
                                     log::error!("{e}");
                                 }
-                            } else if video_packet_sender.is_some() && packet.stream() == video_index {
-                                if let Err(e) = video_packet_sender.as_ref().expect("").send(Some(packet)) {
+                            } else if let Some(video_sender) = &video_packet_sender
+                                && packet.stream() == video_index
+                            {
+                                if let Err(e) = video_sender.send(Some(packet)) {
                                     log::error!("{e}");
                                 }
                             }
@@ -1030,21 +1030,20 @@ impl Player {
                 );
             }
 
-            if seekbar_hovered || currently_seeking {
-                if let Some(hover_pos) = seekbar_response.hover_pos() {
-                    if seekbar_response.clicked() || seekbar_response.dragged() {
-                        let seek_frac = ((hover_pos - image_res.rect.left_top()).x - seekbar_width_offset / 2.)
-                            .max(0.)
-                            .min(full_seek_bar_width)
-                            / full_seek_bar_width;
-                        seekbar_rect.set_right(hover_pos.x.min(full_seek_bar_rect.right()).max(full_seek_bar_rect.left()));
-                        if is_stopped {
-                            self.start()
-                        }
-                        let frame = seek_frac as f64 * self.duration as f64;
-                        self.seek(frame as i64);
-                    }
+            if (seekbar_hovered || currently_seeking)
+                && let Some(hover_pos) = seekbar_response.hover_pos()
+                && (seekbar_response.clicked() || seekbar_response.dragged())
+            {
+                let seek_frac = ((hover_pos - image_res.rect.left_top()).x - seekbar_width_offset / 2.)
+                    .max(0.)
+                    .min(full_seek_bar_width)
+                    / full_seek_bar_width;
+                seekbar_rect.set_right(hover_pos.x.min(full_seek_bar_rect.right()).max(full_seek_bar_rect.left()));
+                if is_stopped {
+                    self.start()
                 }
+                let frame = seek_frac as f64 * self.duration as f64;
+                self.seek(frame as i64);
             }
             let text_color = egui::Color32::WHITE.linear_multiply(seekbar_anim_frac);
 
@@ -1167,12 +1166,12 @@ impl Player {
 
                 ui.painter().rect_filled(sound_bar_rect, egui::CornerRadius::same(5), sound_bar_color);
                 let sound_slider_resp = ui.interact(sound_slider_rect, image_res.id.with("sound_slider_sense"), egui::Sense::click_and_drag());
-                if sound_anim_frac > 0. && sound_slider_resp.clicked() || sound_slider_resp.dragged() {
-                    if let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos()) {
-                        let sound_frac = 1. - ((hover_pos - sound_slider_rect.left_top()).y / sound_slider_rect.height()).clamp(0., 1.);
-                        // self.audio_volume.set(sound_frac as f64 * kits::Volume::MAX_INT_VOLUME as f64);
-                        self.audio_volume.set(sound_frac as f64);
-                    }
+                if (sound_anim_frac > 0. && sound_slider_resp.clicked() || sound_slider_resp.dragged())
+                    && let Some(hover_pos) = ui.ctx().input(|i| i.pointer.hover_pos())
+                {
+                    let sound_frac = 1. - ((hover_pos - sound_slider_rect.left_top()).y / sound_slider_rect.height()).clamp(0., 1.);
+                    // self.audio_volume.set(sound_frac as f64 * kits::Volume::MAX_INT_VOLUME as f64);
+                    self.audio_volume.set(sound_frac as f64);
                 }
             }
 
@@ -1360,7 +1359,7 @@ impl Drop for Player {
 
 fn to_sample(sample_format: cpal::SampleFormat) -> ffmpeg::format::Sample {
     use cpal::SampleFormat;
-    use ffmpeg::format::{sample::Type as SampleType, Sample};
+    use ffmpeg::format::{Sample, sample::Type as SampleType};
 
     match &sample_format {
         SampleFormat::I8 => Sample::U8(SampleType::Packed),
@@ -1431,18 +1430,18 @@ fn print_meda_info(context: &ffmpeg::format::context::Input) -> Result<(), anyho
                 println!("\tvideo.references: {}", video.references());
                 println!("\tvideo.intra_dc_precision: {}", video.intra_dc_precision());
             }
-        } else if codec.medium() == ffmpeg::media::Type::Audio {
-            if let Ok(audio) = codec.decoder().audio() {
-                println!("\tbit_rate: {}", audio.bit_rate());
-                println!("\tmax_rate: {}", audio.max_bit_rate());
-                println!("\tdelay: {}", audio.delay());
-                println!("\taudio.rate: {}", audio.rate());
-                println!("\taudio.channels: {}", audio.channels());
-                println!("\taudio.format: {:?}", audio.format());
-                println!("\taudio.frames: {}", audio.frames());
-                println!("\taudio.align: {}", audio.align());
-                println!("\taudio.channel_layout: {:?}", audio.channel_layout());
-            }
+        } else if codec.medium() == ffmpeg::media::Type::Audio
+            && let Ok(audio) = codec.decoder().audio()
+        {
+            println!("\tbit_rate: {}", audio.bit_rate());
+            println!("\tmax_rate: {}", audio.max_bit_rate());
+            println!("\tdelay: {}", audio.delay());
+            println!("\taudio.rate: {}", audio.rate());
+            println!("\taudio.channels: {}", audio.channels());
+            println!("\taudio.format: {:?}", audio.format());
+            println!("\taudio.frames: {}", audio.frames());
+            println!("\taudio.align: {}", audio.align());
+            println!("\taudio.channel_layout: {:?}", audio.channel_layout());
         }
     }
     Ok(())

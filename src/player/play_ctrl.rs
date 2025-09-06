@@ -1,7 +1,7 @@
 use std::{
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     time::Duration,
 };
@@ -12,11 +12,11 @@ use ringbuf::traits::{Observer, Producer};
 use crate::{
     kits::{Shared, TextureHandleNoMut},
     player::{
+        AV_TIME_BASE_RATIONAL, Clock, CommandGo, VIDEO_SYNC_THRESHOLD_MIN,
         audio::{AudioDevice, AudioPlayFrame},
         consts::VIDEO_SYNC_THRESHOLD_MAX,
-        kits::{timestamp_to_millisecond, RingBufferProducer},
+        kits::{RingBufferProducer, timestamp_to_millisecond},
         video::VideoPlayFrame,
-        Clock, CommandGo, AV_TIME_BASE_RATIONAL, VIDEO_SYNC_THRESHOLD_MIN,
     },
 };
 

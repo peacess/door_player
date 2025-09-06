@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use door_player::{ffmpeg, AppUi};
+use door_player::{AppUi, ffmpeg};
 use env_logger::Env;
 
 fn main() {

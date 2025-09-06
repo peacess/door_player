@@ -4,7 +4,7 @@ use crate::{
     kits,
     kits::Shared,
     player,
-    player::{kits::FfmpegKit, CommandGo, CommandUi, Player},
+    player::{CommandGo, CommandUi, Player, kits::FfmpegKit},
 };
 
 pub struct AppUi {
@@ -92,10 +92,11 @@ impl AppUi {
                         pressed: false,
                         ..
                     } => {
-                        if self.player.is_none() && ui.rect_contains_pointer(ctx.available_rect()) {
-                            if let Some(buf) = Self::select_file() {
-                                self.open_file(ctx, buf);
-                            }
+                        if self.player.is_none()
+                            && ui.rect_contains_pointer(ctx.available_rect())
+                            && let Some(buf) = Self::select_file()
+                        {
+                            self.open_file(ctx, buf);
                         }
                     }
                     _ => {}
@@ -124,13 +125,7 @@ impl AppUi {
 
         files.sort();
         if let Ok(i) = files.binary_search(&path_file.file_name().unwrap().to_os_string()) {
-            let i = {
-                if i == files.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            };
+            let i = { if i == files.len() - 1 { 0 } else { i + 1 } };
             let f = files.get(i);
             return path_file.parent().unwrap().join(f.unwrap()).to_string_lossy().to_string();
         }
@@ -157,13 +152,7 @@ impl AppUi {
 
         files.sort();
         if let Ok(i) = files.binary_search(&path_file.file_name().unwrap().to_os_string()) {
-            let i = {
-                if i == 0 {
-                    files.len() - 1
-                } else {
-                    i - 1
-                }
-            };
+            let i = { if i == 0 { files.len() - 1 } else { i - 1 } };
             let f = files.get(i);
             return path_file.parent().unwrap().join(f.unwrap()).to_string_lossy().to_string();
         }
@@ -175,16 +164,15 @@ impl AppUi {
         self.command_ui.set(CommandUi::None);
         if cmd == CommandUi::None {
             //check play finish
-            if self.auto_play_next {
-                if let Some(p) = &self.player {
-                    if p.play_ctrl.video_finished() {
-                        let file = AppUi::next_file(&self.media_path);
-                        if self.open_file(ctx, file.into()) {
-                            if let Some(p) = &mut self.player {
-                                p.start();
-                            }
-                        }
-                    }
+            if self.auto_play_next
+                && let Some(p) = &self.player
+                && p.play_ctrl.video_finished()
+            {
+                let file = AppUi::next_file(&self.media_path);
+                if self.open_file(ctx, file.into())
+                    && let Some(p) = &mut self.player
+                {
+                    p.start();
                 }
             }
             return;
@@ -427,10 +415,10 @@ impl AppUi {
                         }
                     });
                     ui.horizontal(|ui| {
-                        if ui.button("Open").clicked() {
-                            if let Some(buf) = Self::select_file() {
-                                self.open_file(ctx, buf);
-                            }
+                        if ui.button("Open").clicked()
+                            && let Some(buf) = Self::select_file()
+                        {
+                            self.open_file(ctx, buf);
                         }
                     });
                     ui.horizontal(|ui| {
@@ -439,17 +427,17 @@ impl AppUi {
                         }
                     });
                     ui.horizontal(|ui| {
-                        if ui.button("Pause").clicked() {
-                            if let Some(p) = &mut self.player {
-                                p.pause();
-                            }
+                        if ui.button("Pause").clicked()
+                            && let Some(p) = &mut self.player
+                        {
+                            p.pause();
                         }
                     });
                     ui.horizontal(|ui| {
-                        if ui.button("Start").clicked() {
-                            if let Some(p) = &mut self.player {
-                                p.start();
-                            }
+                        if ui.button("Start").clicked()
+                            && let Some(p) = &mut self.player
+                        {
+                            p.start();
                         }
                     });
                     ui.checkbox(&mut self.no_scale, "no scale");
@@ -494,11 +482,11 @@ impl AppUi {
                             }
                             if go_packet {
                                 let mut str_amount = format!("{go_amount}");
-                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
-                                    if let Ok(v) = str_amount.parse() {
-                                        go_amount = v;
-                                        self.command_go_ui.set(CommandGo::Packet(go_amount));
-                                    }
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                    && let Ok(v) = str_amount.parse()
+                                {
+                                    go_amount = v;
+                                    self.command_go_ui.set(CommandGo::Packet(go_amount));
                                 }
                             }
                         });
@@ -516,11 +504,11 @@ impl AppUi {
                             }
                             if go_frame {
                                 let mut str_amount = format!("{go_amount}");
-                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
-                                    if let Ok(v) = str_amount.parse() {
-                                        go_amount = v;
-                                        self.command_go_ui.set(CommandGo::Frame(go_amount));
-                                    }
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                    && let Ok(v) = str_amount.parse()
+                                {
+                                    go_amount = v;
+                                    self.command_go_ui.set(CommandGo::Frame(go_amount));
                                 }
                             }
                         });
@@ -539,11 +527,11 @@ impl AppUi {
                             }
                             if seek_ms {
                                 let mut str_amount = format!("{go_amount}");
-                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
-                                    if let Ok(v) = str_amount.parse() {
-                                        go_amount = v;
-                                        self.command_go_ui.set(CommandGo::GoMs(go_amount));
-                                    }
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                    && let Ok(v) = str_amount.parse()
+                                {
+                                    go_amount = v;
+                                    self.command_go_ui.set(CommandGo::GoMs(go_amount));
                                 }
                             }
                         });
@@ -559,10 +547,10 @@ impl AppUi {
                                 player.tab_seek();
                             }
                             let mut str_amount = format!("{}", player.tab_seek_ms);
-                            if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
-                                if let Ok(v) = str_amount.parse() {
-                                    player.tab_seek_ms = v;
-                                }
+                            if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                && let Ok(v) = str_amount.parse()
+                            {
+                                player.tab_seek_ms = v;
                             }
                         });
 

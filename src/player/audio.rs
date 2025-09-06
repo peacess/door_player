@@ -1,8 +1,8 @@
 use std::sync::atomic::Ordering;
 
 use cpal::{
-    traits::{DeviceTrait, HostTrait, StreamTrait},
     SupportedStreamConfig,
+    traits::{DeviceTrait, HostTrait, StreamTrait},
 };
 use ringbuf::traits::{Consumer, Observer};
 

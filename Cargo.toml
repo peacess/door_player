@@ -1,7 +1,7 @@
 [package]
 name = "door_player"
-version = "0.3.17"
-edition = "2021"
+version = "0.3.19"
+edition = "2024"
 authors = ["Andy <peacess@163.com>"]
 description = "Door Player, Cross by ffmpeg and egui"
 repository = "https://github.com/peacess/door_player"
@@ -13,9 +13,9 @@ license = "Apache-2.0"
 [dependencies]
 log = "0.4.28"
 env_logger = "0.11.8"
-egui = { version = "0.32.1" }
+egui = { version = "0.32.2" }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
-eframe = { version = "0.32.1", features = ["wgpu"]}
+eframe = { version = "0.32.2", features = ["wgpu"]}
 
 rfd = "0.15.4"
 ffmpeg-next = {version = "8.0.0", default-features = true}
