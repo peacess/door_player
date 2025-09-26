@@ -915,10 +915,9 @@ impl Player {
                                 }
                             } else if let Some(video_sender) = &video_packet_sender
                                 && packet.stream() == video_index
+                                && let Err(e) = video_sender.send(Some(packet))
                             {
-                                if let Err(e) = video_sender.send(Some(packet)) {
-                                    log::error!("{e}");
-                                }
+                                log::error!("{e}");
                             }
                             // } else if packet.stream() == subtitle_index {
                             //     if let Err(e) = subtitle_deque.send(Some(packet)) {
