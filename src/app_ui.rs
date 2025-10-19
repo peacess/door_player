@@ -415,9 +415,9 @@ impl AppUi {
                         .show_inside(ui, |ui| {
                             let ts = env!("X__BUILD_TIME").parse::<i64>().unwrap_or_default();
                             let data = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(ts).unwrap_or_default();
-                            ui.label(format!("{}", data.to_string()));
-                            ui.label(format!("version: {}", env!("X__VERSION").to_string()));
-                            ui.label(format!("git hash: {}", env!("X__GIT_HASH").to_string()));
+                            ui.label(data.to_string());
+                            ui.label(format!("version: {}", env!("X__VERSION")));
+                            ui.label(format!("git hash: {}", env!("X__GIT_HASH")));
                         });
 
                     egui::CentralPanel::default().show_inside(ui, |ui| {
