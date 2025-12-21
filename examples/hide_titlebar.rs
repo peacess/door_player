@@ -10,14 +10,14 @@ fn main() {
             .with_transparent(false),
         ..Default::default()
     };
-    if let Err(e) = eframe::run_native("Hide titlebar", opt, Box::new(|cc| Ok(Box::new(App {})))) {
+    if let Err(e) = eframe::run_native("Hide titlebar", opt, Box::new(|_cc| Ok(Box::new(App {})))) {
         log::error!("{}", e);
     }
 }
 
 struct App {}
 impl eframe::App for App {
-    fn update(&mut self, ctx: &Context, frame: &mut Frame) {
+    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
         let w = {
             let mut w = egui::Window::new("Hello");
             w = w.title_bar(true);

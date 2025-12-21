@@ -10,12 +10,9 @@ use crate::{
 pub struct AppUi {
     collapse: bool,
     player: Option<Player>,
-
     media_path: String,
     no_scale: bool,
     auto_play_next: bool,
-    title: String,
-
     command_ui: Shared<CommandUi>,
     /// ui界面使用
     pub command_go_ui: Shared<CommandGo>,
@@ -206,122 +203,6 @@ impl AppUi {
             CommandUi::MinimizedFalse => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false)),
             CommandUi::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
         }
-    }
-
-    fn title_bar(&mut self, ctx: &egui::Context, frame: egui::Frame) {
-        use egui::{Align, Button, Layout, RichText};
-        if ctx.input(|c| c.viewport().fullscreen.unwrap_or_default()) {
-            return;
-        }
-
-        let title_bar_height = 32.0;
-        egui::TopBottomPanel::top("title_bar_frame")
-            .frame(frame)
-            .show_separator_line(false)
-            .exact_height(title_bar_height)
-            .show(ctx, |ui| {
-                let title_bar_rect = {
-                    let mut rect = ui.max_rect();
-                    rect.max.y = rect.min.y + title_bar_height;
-                    rect
-                };
-                let title_bar_response = ui.interact(title_bar_rect, egui::Id::new("title_bar"), egui::Sense::click_and_drag());
-
-                ui.painter().text(
-                    title_bar_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    &self.title,
-                    egui::FontId::proportional(16.0),
-                    ui.style().visuals.text_color(),
-                );
-
-                if title_bar_response.double_clicked() {
-                    //the double click do not work,why?
-                    let is_full = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_full));
-                } else if title_bar_response.is_pointer_button_down_on() {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
-                }
-
-                ui.scope_builder(egui::UiBuilder::new().max_rect(title_bar_rect), |ui| {
-                    let button_height = 16.0;
-                    let space = 8.0;
-                    let close_text = " ❌ ";
-                    let maximize_text = " 🗖 ";
-                    let minimize_text = " 🗕 ";
-                    let restore_text = " 🗗 ";
-                    ui.columns(2, |cols| {
-                        cols.get_mut(0).expect("").with_layout(Layout::left_to_right(Align::Center), |ui| {
-                            ui.visuals_mut().button_frame = false;
-                            ui.add_space(space);
-                            let close_response = ui
-                                .add(Button::new(RichText::new(close_text).size(button_height)))
-                                .on_hover_text("Close the window");
-                            if close_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                            }
-
-                            let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                            if is_maximized {
-                                let maximized_response = ui
-                                    .add(Button::new(RichText::new(restore_text).size(button_height)))
-                                    .on_hover_text("Restore window");
-                                if maximized_response.clicked() {
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(false));
-                                }
-                            } else {
-                                let maximized_response = ui
-                                    .add(Button::new(RichText::new(maximize_text).size(button_height)))
-                                    .on_hover_text("Maximize window");
-                                if maximized_response.clicked() {
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                                }
-                            }
-
-                            let minimized_response = ui
-                                .add(Button::new(RichText::new(minimize_text).size(button_height)))
-                                .on_hover_text("Minimize the window");
-                            if minimized_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                            }
-                        });
-                        cols.get_mut(1).expect("").with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.visuals_mut().button_frame = false;
-                            ui.add_space(space);
-                            let close_response = ui
-                                .add(Button::new(RichText::new(close_text).size(button_height)))
-                                .on_hover_text("Close the window");
-                            if close_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                            }
-
-                            let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                            if is_maximized {
-                                let maximized_response = ui
-                                    .add(Button::new(RichText::new(restore_text).size(button_height)))
-                                    .on_hover_text("Restore window");
-                                if maximized_response.clicked() {
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(false));
-                                }
-                            } else {
-                                let maximized_response = ui
-                                    .add(Button::new(RichText::new(maximize_text).size(button_height)))
-                                    .on_hover_text("Maximize window");
-                                if maximized_response.clicked() {
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                                }
-                            }
-
-                            let minimized_response = ui
-                                .add(Button::new(RichText::new(minimize_text).size(button_height)))
-                                .on_hover_text("Minimize the window");
-                            if minimized_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                            }
-                        });
-                    });
-                });
-            });
     }
 
     fn main_frame(&mut self, ctx: &egui::Context, frame: egui::Frame) {
@@ -598,7 +479,7 @@ unsafe impl Send for AppUi {}
 unsafe impl Sync for AppUi {}
 
 impl AppUi {
-    fn new(cc: &eframe::CreationContext<'_>, title: &str) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self::set_font(&cc.egui_ctx);
         Self {
             collapse: true,
@@ -606,7 +487,6 @@ impl AppUi {
             media_path: String::default(),
             no_scale: false,
             auto_play_next: false,
-            title: title.to_owned(),
             command_ui: Shared::new(CommandUi::None),
             command_go_ui: Shared::new(CommandGo::GoMs(5000)),
         }
@@ -635,7 +515,7 @@ impl AppUi {
             ..Default::default()
         };
 
-        let re = eframe::run_native(title, ops, Box::new(|cc| Ok(Box::new(AppUi::new(cc, title)))));
+        let re = eframe::run_native(title, ops, Box::new(|cc| Ok(Box::new(AppUi::new(cc)))));
         if let Err(e) = re {
             log::error!("{e:?}");
         }
