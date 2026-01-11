@@ -1,13 +1,14 @@
 [source.crates-io]
-replace-with = 'rsproxy'
+replace-with = 'rsproxy-sparse'
 [source.rsproxy]
+registry = "https://rsproxy.cn/crates.io-index"
+[source.rsproxy-sparse]
 registry = "sparse+https://rsproxy.cn/index/"
-[source.tsinghua]
-registry = "sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/"
-[source.ustc]
-registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+[registries.rsproxy]
+index = "https://rsproxy.cn/crates.io-index"
+[net]
+git-fetch-with-cli = true
 
 #[build]
 #jobs = 10
 #rustflags = ["-C", "target-cpu=native"]
-

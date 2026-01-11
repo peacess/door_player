@@ -9,6 +9,8 @@ clean:
 	cargo clean
 	rm Cargo.lock
 rebuild: clean build
+install:
+	cargo install cargo-edit
 upgrade:
 	cargo upgrade && cargo update
 format:

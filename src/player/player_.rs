@@ -353,7 +353,7 @@ impl Player {
                 audio_decoder.rate(),
                 to_sample(stream_config.sample_format()),
                 ffmpeg::ChannelLayout::default(stream_config.channels() as i32), //ffmpeg::ChannelLayout::STEREO,
-                stream_config.sample_rate().0,
+                stream_config.sample_rate(),
             ) {
                 Err(e) => {
                     log::error!("{e}");
