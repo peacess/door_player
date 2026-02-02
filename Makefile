@@ -36,7 +36,7 @@ cp:
 		$(error Unknown operating system. Please update the Makefile.)
 	endif
 
-cp_linux:
+cp_linux: build
 	cp -f target/release/door_player ${HOME}/bin/door_player
 
 cp_windows:

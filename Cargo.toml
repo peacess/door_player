@@ -17,7 +17,7 @@ egui = { version = "0.33.3" }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
 eframe = { version = "0.33.3", features = ["wgpu"]}
 
-rfd = "0.17.1"
+rfd = "0.17.2"
 ffmpeg-next = {version = "8.0.0", default-features = true}
 #ffmpeg-the-third = {version = "1.2.2+ffmpeg-6.0"}
 #rusty_ffmpeg = "0.13.1+ffmpeg.6.0"
@@ -30,17 +30,17 @@ rust_kits = {version = "0.1.6"}
 #
 parking_lot = "0.12.5"
 atomic = "0.6.1"
-bytemuck = "1.24.0"
+bytemuck = "1.25.0"
 kanal = "0.1.1"
 
-chrono ="0.4.42"
+chrono ="0.4.43"
 anyhow = "1.0.100"
 reqwest = { version = "0.13.1", features = ["blocking"] }
 
 # [dev-dependencies]
 # aws-lc-sys = "0.22.0"
 [build-dependencies]
-chrono ="0.4.42"
+chrono ="0.4.43"
 
 [profile.dev]
 #opt-level= 3
