@@ -1,6 +1,6 @@
 use ringbuf::{
-    traits::{Consumer, Producer, Split},
     HeapRb,
+    traits::{Consumer, Producer, Split},
 };
 #[test]
 fn ring_buf_test() {

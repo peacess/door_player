@@ -1,4 +1,4 @@
-pub use core::sync::atomic::{fence, Ordering};
+pub use core::sync::atomic::{Ordering, fence};
 use std::sync::Arc;
 
 /// Simple concurrency of primitive values.

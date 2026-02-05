@@ -4,18 +4,15 @@ use crate::{
     kits,
     kits::Shared,
     player,
-    player::{kits::FfmpegKit, CommandGo, CommandUi, Player},
+    player::{CommandGo, CommandUi, Player, kits::FfmpegKit},
 };
 
 pub struct AppUi {
     collapse: bool,
     player: Option<Player>,
-
     media_path: String,
     no_scale: bool,
     auto_play_next: bool,
-    title: String,
-
     command_ui: Shared<CommandUi>,
     /// ui界面使用
     pub command_go_ui: Shared<CommandGo>,
@@ -92,10 +89,11 @@ impl AppUi {
                         pressed: false,
                         ..
                     } => {
-                        if self.player.is_none() && ui.rect_contains_pointer(ctx.available_rect()) {
-                            if let Some(buf) = Self::select_file() {
-                                self.open_file(ctx, buf);
-                            }
+                        if self.player.is_none()
+                            && ui.rect_contains_pointer(ctx.available_rect())
+                            && let Some(buf) = Self::select_file()
+                        {
+                            self.open_file(ctx, buf);
                         }
                     }
                     _ => {}
@@ -124,13 +122,7 @@ impl AppUi {
 
         files.sort();
         if let Ok(i) = files.binary_search(&path_file.file_name().unwrap().to_os_string()) {
-            let i = {
-                if i == files.len() - 1 {
-                    0
-                } else {
-                    i + 1
-                }
-            };
+            let i = { if i == files.len() - 1 { 0 } else { i + 1 } };
             let f = files.get(i);
             return path_file.parent().unwrap().join(f.unwrap()).to_string_lossy().to_string();
         }
@@ -157,13 +149,7 @@ impl AppUi {
 
         files.sort();
         if let Ok(i) = files.binary_search(&path_file.file_name().unwrap().to_os_string()) {
-            let i = {
-                if i == 0 {
-                    files.len() - 1
-                } else {
-                    i - 1
-                }
-            };
+            let i = { if i == 0 { files.len() - 1 } else { i - 1 } };
             let f = files.get(i);
             return path_file.parent().unwrap().join(f.unwrap()).to_string_lossy().to_string();
         }
@@ -175,16 +161,15 @@ impl AppUi {
         self.command_ui.set(CommandUi::None);
         if cmd == CommandUi::None {
             //check play finish
-            if self.auto_play_next {
-                if let Some(p) = &self.player {
-                    if p.play_ctrl.video_finished() {
-                        let file = AppUi::next_file(&self.media_path);
-                        if self.open_file(ctx, file.into()) {
-                            if let Some(p) = &mut self.player {
-                                p.start();
-                            }
-                        }
-                    }
+            if self.auto_play_next
+                && let Some(p) = &self.player
+                && p.play_ctrl.video_finished()
+            {
+                let file = AppUi::next_file(&self.media_path);
+                if self.open_file(ctx, file.into())
+                    && let Some(p) = &mut self.player
+                {
+                    p.start();
                 }
             }
             return;
@@ -218,122 +203,6 @@ impl AppUi {
             CommandUi::MinimizedFalse => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false)),
             CommandUi::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
         }
-    }
-
-    fn title_bar(&mut self, ctx: &egui::Context, frame: egui::Frame) {
-        use egui::{Align, Button, Layout, RichText};
-        if ctx.input(|c| c.viewport().fullscreen.unwrap_or_default()) {
-            return;
-        }
-
-        let title_bar_height = 32.0;
-        egui::TopBottomPanel::top("title_bar_frame")
-            .frame(frame)
-            .show_separator_line(false)
-            .exact_height(title_bar_height)
-            .show(ctx, |ui| {
-                let title_bar_rect = {
-                    let mut rect = ui.max_rect();
-                    rect.max.y = rect.min.y + title_bar_height;
-                    rect
-                };
-                let title_bar_response = ui.interact(title_bar_rect, egui::Id::new("title_bar"), egui::Sense::click_and_drag());
-
-                ui.painter().text(
-                    title_bar_rect.center(),
-                    egui::Align2::CENTER_CENTER,
-                    &self.title,
-                    egui::FontId::proportional(16.0),
-                    ui.style().visuals.text_color(),
-                );
-
-                if title_bar_response.double_clicked() {
-                    //the double click do not work,why?
-                    let is_full = ui.input(|i| i.viewport().fullscreen.unwrap_or(false));
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!is_full));
-                } else if title_bar_response.is_pointer_button_down_on() {
-                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
-                }
-
-                ui.scope_builder(egui::UiBuilder::new().max_rect(title_bar_rect), |ui| {
-                    let button_height = 16.0;
-                    let space = 8.0;
-                    let close_text = " ❌ ";
-                    let maximize_text = " 🗖 ";
-                    let minimize_text = " 🗕 ";
-                    let restore_text = " 🗗 ";
-                    ui.columns(2, |cols| {
-                        cols.get_mut(0).expect("").with_layout(Layout::left_to_right(Align::Center), |ui| {
-                            ui.visuals_mut().button_frame = false;
-                            ui.add_space(space);
-                            let close_response = ui
-                                .add(Button::new(RichText::new(close_text).size(button_height)))
-                                .on_hover_text("Close the window");
-                            if close_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                            }
-
-                            let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                            if is_maximized {
-                                let maximized_response = ui
-                                    .add(Button::new(RichText::new(restore_text).size(button_height)))
-                                    .on_hover_text("Restore window");
-                                if maximized_response.clicked() {
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(false));
-                                }
-                            } else {
-                                let maximized_response = ui
-                                    .add(Button::new(RichText::new(maximize_text).size(button_height)))
-                                    .on_hover_text("Maximize window");
-                                if maximized_response.clicked() {
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                                }
-                            }
-
-                            let minimized_response = ui
-                                .add(Button::new(RichText::new(minimize_text).size(button_height)))
-                                .on_hover_text("Minimize the window");
-                            if minimized_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                            }
-                        });
-                        cols.get_mut(1).expect("").with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            ui.visuals_mut().button_frame = false;
-                            ui.add_space(space);
-                            let close_response = ui
-                                .add(Button::new(RichText::new(close_text).size(button_height)))
-                                .on_hover_text("Close the window");
-                            if close_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
-                            }
-
-                            let is_maximized = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                            if is_maximized {
-                                let maximized_response = ui
-                                    .add(Button::new(RichText::new(restore_text).size(button_height)))
-                                    .on_hover_text("Restore window");
-                                if maximized_response.clicked() {
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(false));
-                                }
-                            } else {
-                                let maximized_response = ui
-                                    .add(Button::new(RichText::new(maximize_text).size(button_height)))
-                                    .on_hover_text("Maximize window");
-                                if maximized_response.clicked() {
-                                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(true));
-                                }
-                            }
-
-                            let minimized_response = ui
-                                .add(Button::new(RichText::new(minimize_text).size(button_height)))
-                                .on_hover_text("Minimize the window");
-                            if minimized_response.clicked() {
-                                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Minimized(true));
-                            }
-                        });
-                    });
-                });
-            });
     }
 
     fn main_frame(&mut self, ctx: &egui::Context, frame: egui::Frame) {
@@ -421,173 +290,185 @@ impl AppUi {
                 .min_width(0.0)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    ui.horizontal(|ui| {
-                        if ui.button("Exit").clicked() {
-                            self.command_ui.set(CommandUi::Close);
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        if ui.button("Open").clicked() {
-                            if let Some(buf) = Self::select_file() {
+                    egui::TopBottomPanel::bottom("right_bottom_panel")
+                        .resizable(false)
+                        .exact_height(80.0)
+                        .show_inside(ui, |ui| {
+                            let ts = env!("X__BUILD_TIME").parse::<i64>().unwrap_or_default();
+                            let data = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(ts).unwrap_or_default();
+                            ui.label(data.to_string());
+                            ui.label(format!("version: {}", env!("X__VERSION")));
+                            ui.label(format!("git hash: {}", env!("X__GIT_HASH")));
+                        });
+
+                    egui::CentralPanel::default().show_inside(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            if ui.button("Exit").clicked() {
+                                self.command_ui.set(CommandUi::Close);
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("Open").clicked()
+                                && let Some(buf) = Self::select_file()
+                            {
                                 self.open_file(ctx, buf);
                             }
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        if ui.button("Stop").clicked() {
-                            self.player = None;
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        if ui.button("Pause").clicked() {
-                            if let Some(p) = &mut self.player {
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("Stop").clicked() {
+                                self.player = None;
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("Pause").clicked()
+                                && let Some(p) = &mut self.player
+                            {
                                 p.pause();
                             }
-                        }
-                    });
-                    ui.horizontal(|ui| {
-                        if ui.button("Start").clicked() {
-                            if let Some(p) = &mut self.player {
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("Start").clicked()
+                                && let Some(p) = &mut self.player
+                            {
                                 p.start();
                             }
-                        }
-                    });
-                    ui.checkbox(&mut self.no_scale, "no scale");
+                        });
+                        ui.checkbox(&mut self.no_scale, "no scale");
 
-                    if !self.media_path.is_empty() {
-                        ui.horizontal(|ui| {
-                            if ui.button("Full Screen").clicked() {
-                                self.command_ui.set(CommandUi::FullscreenToggle);
-                            }
-                        });
-                        ui.label(self.media_path.clone());
-                        ui.horizontal(|ui| {
-                            if ui.button("Pre file").clicked() {
-                                let file = AppUi::pre_file(&self.media_path);
-                                self.open_file(ctx, file.into());
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            if ui.button("ReOpen").clicked() {
-                                self.open_file(ctx, self.media_path.clone().into());
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            if ui.button("Next file").clicked() {
-                                let file = AppUi::next_file(&self.media_path);
-                                self.open_file(ctx, file.into());
-                            }
-                        });
-                    }
-                    if let Some(player) = &mut self.player {
-                        ui.horizontal(|ui| {
-                            let (mut go_amount, mut go_packet) = match self.command_go_ui.get() {
-                                CommandGo::Packet(v) => (v, true),
-                                _ => (10, false),
-                            };
-                            if ui.checkbox(&mut go_packet, "go packets: ").changed() {
-                                if go_packet {
-                                    self.command_go_ui.set(CommandGo::Packet(go_amount));
-                                } else {
-                                    self.command_go_ui.set(CommandGo::None);
+                        if !self.media_path.is_empty() {
+                            ui.horizontal(|ui| {
+                                if ui.button("Full Screen").clicked() {
+                                    self.command_ui.set(CommandUi::FullscreenToggle);
                                 }
-                            }
-                            if go_packet {
-                                let mut str_amount = format!("{go_amount}");
-                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
-                                    if let Ok(v) = str_amount.parse() {
+                            });
+                            ui.label(self.media_path.clone());
+                            ui.horizontal(|ui| {
+                                if ui.button("Pre file").clicked() {
+                                    let file = AppUi::pre_file(&self.media_path);
+                                    self.open_file(ctx, file.into());
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                if ui.button("ReOpen").clicked() {
+                                    self.open_file(ctx, self.media_path.clone().into());
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                if ui.button("Next file").clicked() {
+                                    let file = AppUi::next_file(&self.media_path);
+                                    self.open_file(ctx, file.into());
+                                }
+                            });
+                        }
+                        if let Some(player) = &mut self.player {
+                            ui.horizontal(|ui| {
+                                let (mut go_amount, mut go_packet) = match self.command_go_ui.get() {
+                                    CommandGo::Packet(v) => (v, true),
+                                    _ => (10, false),
+                                };
+                                if ui.checkbox(&mut go_packet, "go packets: ").changed() {
+                                    if go_packet {
+                                        self.command_go_ui.set(CommandGo::Packet(go_amount));
+                                    } else {
+                                        self.command_go_ui.set(CommandGo::None);
+                                    }
+                                }
+                                if go_packet {
+                                    let mut str_amount = format!("{go_amount}");
+                                    if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                        && let Ok(v) = str_amount.parse()
+                                    {
                                         go_amount = v;
                                         self.command_go_ui.set(CommandGo::Packet(go_amount));
                                     }
                                 }
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            let (mut go_amount, mut go_frame) = match self.command_go_ui.get() {
-                                CommandGo::Frame(v) => (v, true),
-                                _ => (5, false),
-                            };
-                            if ui.checkbox(&mut go_frame, "go frames: ").changed() {
-                                if go_frame {
-                                    self.command_go_ui.set(CommandGo::Frame(go_amount));
-                                } else {
-                                    self.command_go_ui.set(CommandGo::None);
+                            });
+                            ui.horizontal(|ui| {
+                                let (mut go_amount, mut go_frame) = match self.command_go_ui.get() {
+                                    CommandGo::Frame(v) => (v, true),
+                                    _ => (5, false),
+                                };
+                                if ui.checkbox(&mut go_frame, "go frames: ").changed() {
+                                    if go_frame {
+                                        self.command_go_ui.set(CommandGo::Frame(go_amount));
+                                    } else {
+                                        self.command_go_ui.set(CommandGo::None);
+                                    }
                                 }
-                            }
-                            if go_frame {
-                                let mut str_amount = format!("{go_amount}");
-                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
-                                    if let Ok(v) = str_amount.parse() {
+                                if go_frame {
+                                    let mut str_amount = format!("{go_amount}");
+                                    if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                        && let Ok(v) = str_amount.parse()
+                                    {
                                         go_amount = v;
                                         self.command_go_ui.set(CommandGo::Frame(go_amount));
                                     }
                                 }
-                            }
-                        });
+                            });
 
-                        ui.horizontal(|ui| {
-                            let (mut go_amount, mut seek_ms) = match self.command_go_ui.get() {
-                                CommandGo::GoMs(v) => (v, true),
-                                _ => (5000, false),
-                            };
-                            if ui.checkbox(&mut seek_ms, "go ms: ").changed() {
-                                if seek_ms {
-                                    self.command_go_ui.set(CommandGo::GoMs(go_amount));
-                                } else {
-                                    self.command_go_ui.set(CommandGo::None);
+                            ui.horizontal(|ui| {
+                                let (mut go_amount, mut seek_ms) = match self.command_go_ui.get() {
+                                    CommandGo::GoMs(v) => (v, true),
+                                    _ => (5000, false),
+                                };
+                                if ui.checkbox(&mut seek_ms, "go ms: ").changed() {
+                                    if seek_ms {
+                                        self.command_go_ui.set(CommandGo::GoMs(go_amount));
+                                    } else {
+                                        self.command_go_ui.set(CommandGo::None);
+                                    }
                                 }
-                            }
-                            if seek_ms {
-                                let mut str_amount = format!("{go_amount}");
-                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
-                                    if let Ok(v) = str_amount.parse() {
+                                if seek_ms {
+                                    let mut str_amount = format!("{go_amount}");
+                                    if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                        && let Ok(v) = str_amount.parse()
+                                    {
                                         go_amount = v;
                                         self.command_go_ui.set(CommandGo::GoMs(go_amount));
                                     }
                                 }
-                            }
-                        });
+                            });
 
-                        ui.horizontal(|ui| {
-                            if ui.button("Go").clicked() {
-                                player.go_ahead_ui(&self.command_go_ui);
-                            }
-                        });
+                            ui.horizontal(|ui| {
+                                if ui.button("Go").clicked() {
+                                    player.go_ahead_ui(&self.command_go_ui);
+                                }
+                            });
 
-                        ui.horizontal(|ui| {
-                            if ui.button("Tab seek: ").clicked() {
-                                player.tab_seek();
-                            }
-                            let mut str_amount = format!("{}", player.tab_seek_ms);
-                            if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed() {
-                                if let Ok(v) = str_amount.parse() {
+                            ui.horizontal(|ui| {
+                                if ui.button("Tab seek: ").clicked() {
+                                    player.tab_seek();
+                                }
+                                let mut str_amount = format!("{}", player.tab_seek_ms);
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                    && let Ok(v) = str_amount.parse()
+                                {
                                     player.tab_seek_ms = v;
                                 }
-                            }
-                        });
+                            });
 
-                        ui.horizontal(|ui| {
-                            if ui.button(" + ").on_hover_text("+ Volume").clicked() {
-                                let v = player::kits::Volume::plus_volume(player.audio_volume.get());
-                                player.audio_volume.set(v);
-                            }
-                            let mut s = player::kits::Volume::int_volume(player.audio_volume.get());
-                            if ui.add(egui::Slider::new(&mut s, 0..=1000).suffix("")).changed() {
-                                let v = player::kits::Volume::f64_volume(s);
-                                player.audio_volume.set(v);
-                            };
-                            if ui.button(" - ").on_hover_text("- Volume").clicked() {
-                                let v = player::kits::Volume::minus_volume(player.audio_volume.get());
-                                player.audio_volume.set(v);
-                            }
-                        });
+                            ui.horizontal(|ui| {
+                                if ui.button(" + ").on_hover_text("+ Volume").clicked() {
+                                    let v = player::kits::Volume::plus_volume(player.audio_volume.get());
+                                    player.audio_volume.set(v);
+                                }
+                                let mut s = player::kits::Volume::int_volume(player.audio_volume.get());
+                                if ui.add(egui::Slider::new(&mut s, 0..=1000).suffix("")).changed() {
+                                    let v = player::kits::Volume::f64_volume(s);
+                                    player.audio_volume.set(v);
+                                };
+                                if ui.button(" - ").on_hover_text("- Volume").clicked() {
+                                    let v = player::kits::Volume::minus_volume(player.audio_volume.get());
+                                    player.audio_volume.set(v);
+                                }
+                            });
 
-                        ui.horizontal(|ui| {
-                            ui.checkbox(&mut self.auto_play_next, "Auto Play Next");
-                        });
-                    }
-
-                    ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+                            ui.horizontal(|ui| {
+                                ui.checkbox(&mut self.auto_play_next, "Auto Play Next");
+                            });
+                        }
+                    });
+                    // ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
                 });
         }
     }
@@ -598,7 +479,7 @@ unsafe impl Send for AppUi {}
 unsafe impl Sync for AppUi {}
 
 impl AppUi {
-    fn new(cc: &eframe::CreationContext<'_>, title: &str) -> Self {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
         Self::set_font(&cc.egui_ctx);
         Self {
             collapse: true,
@@ -606,7 +487,6 @@ impl AppUi {
             media_path: String::default(),
             no_scale: false,
             auto_play_next: false,
-            title: title.to_owned(),
             command_ui: Shared::new(CommandUi::None),
             command_go_ui: Shared::new(CommandGo::GoMs(5000)),
         }
@@ -635,7 +515,7 @@ impl AppUi {
             ..Default::default()
         };
 
-        let re = eframe::run_native(title, ops, Box::new(|cc| Ok(Box::new(AppUi::new(cc, title)))));
+        let re = eframe::run_native(title, ops, Box::new(|cc| Ok(Box::new(AppUi::new(cc)))));
         if let Err(e) = re {
             log::error!("{e:?}");
         }
