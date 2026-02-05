@@ -29,6 +29,8 @@ upgrade:
 	cargo upgrade && cargo update
 format:
 	cargo +nightly fmt
+install:
+	cargo install cargo-update cargo-edit
 cp:
 	$(MAKE) $(cp_cmd)
 cp_linux:
