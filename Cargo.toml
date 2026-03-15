@@ -12,7 +12,7 @@ license = "Apache-2.0"
 
 [dependencies]
 log = "0.4.29"
-env_logger = "0.11.8"
+env_logger = "0.11.9"
 egui = { version = "0.33.3" }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
 eframe = { version = "0.33.3", features = ["wgpu"]}
@@ -22,7 +22,7 @@ ffmpeg-next = {version = "8.0.0", default-features = true}
 #ffmpeg-the-third = {version = "1.2.2+ffmpeg-6.0"}
 #rusty_ffmpeg = "0.13.1+ffmpeg.6.0"
 
-cpal = "0.17.1"
+cpal = "0.17.3"
 spin_sleep = "1.3.3"
 
 ringbuf = "0.4.8"
@@ -33,14 +33,14 @@ atomic = "0.6.1"
 bytemuck = "1.25.0"
 kanal = "0.1.1"
 
-chrono ="0.4.43"
-anyhow = "1.0.100"
-reqwest = { version = "0.13.1", features = ["blocking"] }
+chrono ="0.4.44"
+anyhow = "1.0.102"
+reqwest = { version = "0.13.2", features = ["blocking"] }
 
 # [dev-dependencies]
 # aws-lc-sys = "0.22.0"
 [build-dependencies]
-chrono ="0.4.43"
+chrono ="0.4.44"
 
 [profile.dev]
 #opt-level= 3
