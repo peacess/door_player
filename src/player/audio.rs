@@ -69,7 +69,7 @@ impl AudioDevice {
             }
         };
         let stream = device.build_output_stream(
-            &output_config.clone().into(),
+            output_config.into(),
             move |data: &mut [T], info| {
                 Self::write_audio(data, &mut consumer, info);
             },
@@ -87,7 +87,7 @@ impl AudioDevice {
     }
 
     pub fn output_config(&self) -> SupportedStreamConfig {
-        self.output_config.clone()
+        self.output_config
     }
 
     pub fn set_mute(&self, mute: bool) {

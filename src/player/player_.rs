@@ -60,7 +60,7 @@ impl Player {
                     let mut video_context = ffmpeg::codec::context::Context::from_parameters(video_stream.parameters())?;
                     {
                         let mut thread_conf = video_context.threading();
-                        log::info!("video threads default : {:?}", &thread_conf);
+                        log::info!("video threads default : {:?}", thread_conf);
                         let thread_count = {
                             let l = match fs::metadata(file) {
                                 Err(_) => 1,
@@ -71,7 +71,7 @@ impl Player {
                         if thread_count > 1 {
                             thread_conf.count = thread_count;
                             thread_conf.kind = ffmpeg::threading::Type::Slice;
-                            log::info!("video threads new : {:?}", &thread_conf);
+                            log::info!("video threads new : {:?}", thread_conf);
                             video_context.set_threading(thread_conf);
                         }
                     }
@@ -100,7 +100,7 @@ impl Player {
                 let mut audio_context = ffmpeg::codec::context::Context::from_parameters(audio_stream.parameters())?;
                 {
                     let mut thread_conf = audio_context.threading();
-                    log::info!("audio threads default : {:?}", &thread_conf);
+                    log::info!("audio threads default : {:?}", thread_conf);
                     let thread_count = {
                         let l = match fs::metadata(file) {
                             Err(_) => 1,
@@ -111,7 +111,7 @@ impl Player {
                     if thread_count > 1 {
                         thread_conf.count = thread_count;
                         thread_conf.kind = ffmpeg::threading::Type::Slice;
-                        log::info!("video threads new : {:?}", &thread_conf);
+                        log::info!("video threads new : {:?}", thread_conf);
                         audio_context.set_threading(thread_conf);
                     }
                 }

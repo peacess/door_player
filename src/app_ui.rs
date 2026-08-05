@@ -19,7 +19,7 @@ pub struct AppUi {
 }
 
 impl AppUi {
-    pub(crate) fn handle_key_player(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub(crate) fn handle_key_player(&mut self, ui: &mut egui::Ui) {
         for e in &ui.input(|k| k.events.clone()) {
             if let Some(player) = &mut self.player {
                 if let egui::Event::Key {
@@ -56,11 +56,11 @@ impl AppUi {
                         }
                         egui::Key::PageDown => {
                             let file = AppUi::next_file(&self.media_path);
-                            self.open_file(ctx, file.into());
+                            self.open_file(ui, file.into());
                         }
                         egui::Key::PageUp => {
                             let file = AppUi::pre_file(&self.media_path);
-                            self.open_file(ctx, file.into());
+                            self.open_file(ui, file.into());
                         }
                         egui::Key::F1 => {
                             self.command_ui.set(CommandUi::FullscreenToggle);
@@ -73,7 +73,7 @@ impl AppUi {
                     egui::Event::Key { key, pressed: true, .. } => match key {
                         egui::Key::Space => {
                             if let Some(buf) = Self::select_file() {
-                                self.open_file(ctx, buf);
+                                self.open_file(ui, buf);
                             }
                         }
                         egui::Key::Escape => {
@@ -90,10 +90,10 @@ impl AppUi {
                         ..
                     } => {
                         if self.player.is_none()
-                            && ui.rect_contains_pointer(ctx.available_rect())
+                            && ui.rect_contains_pointer(ui.available_rect_before_wrap())
                             && let Some(buf) = Self::select_file()
                         {
-                            self.open_file(ctx, buf);
+                            self.open_file(ui, buf);
                         }
                     }
                     _ => {}
@@ -205,16 +205,16 @@ impl AppUi {
         }
     }
 
-    fn main_frame(&mut self, ctx: &egui::Context, frame: egui::Frame) {
-        self.right_panel(ctx, frame);
-        egui::CentralPanel::default().frame(frame).show(ctx, |rigth_ui| {
+    fn main_frame(&mut self, ui: &mut egui::Ui, frame: egui::Frame) {
+        self.right_panel(ui, frame);
+        egui::CentralPanel::default().frame(frame).show(ui, |rigth_ui| {
             {
                 let file = rigth_ui.input(|s| match s.raw.dropped_files.first() {
                     Some(egui::DroppedFile { path: Some(first), .. }) => Some(first.clone()),
                     _ => None,
                 });
                 if let Some(f) = file {
-                    self.open_file(ctx, f);
+                    self.open_file(rigth_ui, f);
                 }
             }
             if let Some(player) = &mut self.player {
@@ -243,7 +243,7 @@ impl AppUi {
             if button.clicked() {
                 self.collapse = !self.collapse;
             } else {
-                self.handle_key_player(rigth_ui, ctx);
+                self.handle_key_player(rigth_ui);
             }
         });
     }
@@ -283,193 +283,186 @@ impl AppUi {
         }
     }
 
-    fn right_panel(&mut self, ctx: &egui::Context, frame: egui::Frame) {
+    fn right_panel(&mut self, ui: &mut egui::Ui, frame: egui::Frame) {
         if !self.collapse {
-            egui::SidePanel::right("right_panel")
-                .frame(frame)
-                .min_width(0.0)
-                .resizable(true)
-                .show(ctx, |ui| {
-                    egui::TopBottomPanel::bottom("right_bottom_panel")
-                        .resizable(false)
-                        .exact_height(80.0)
-                        .show_inside(ui, |ui| {
-                            let ts = env!("X__BUILD_TIME").parse::<i64>().unwrap_or_default();
-                            let data = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(ts).unwrap_or_default();
-                            ui.label(data.to_string());
-                            ui.label(format!("version: {}", env!("X__VERSION")));
-                            ui.label(format!("git hash: {}", env!("X__GIT_HASH")));
-                        });
+            egui::Panel::right("right_panel").frame(frame).resizable(true).show(ui, |ui| {
+                egui::Panel::bottom("right_bottom_panel").resizable(false).exact_size(80.0).show(ui, |ui| {
+                    let ts = env!("X__BUILD_TIME").parse::<i64>().unwrap_or_default();
+                    let data = chrono::DateTime::<chrono::Utc>::from_timestamp_micros(ts).unwrap_or_default();
+                    ui.label(data.to_string());
+                    ui.label(format!("version: {}", env!("X__VERSION")));
+                    ui.label(format!("git hash: {}", env!("X__GIT_HASH")));
+                });
 
-                    egui::CentralPanel::default().show_inside(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            if ui.button("Exit").clicked() {
-                                self.command_ui.set(CommandUi::Close);
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            if ui.button("Open").clicked()
-                                && let Some(buf) = Self::select_file()
-                            {
-                                self.open_file(ctx, buf);
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            if ui.button("Stop").clicked() {
-                                self.player = None;
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            if ui.button("Pause").clicked()
-                                && let Some(p) = &mut self.player
-                            {
-                                p.pause();
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            if ui.button("Start").clicked()
-                                && let Some(p) = &mut self.player
-                            {
-                                p.start();
-                            }
-                        });
-                        ui.checkbox(&mut self.no_scale, "no scale");
-
-                        if !self.media_path.is_empty() {
-                            ui.horizontal(|ui| {
-                                if ui.button("Full Screen").clicked() {
-                                    self.command_ui.set(CommandUi::FullscreenToggle);
-                                }
-                            });
-                            ui.label(self.media_path.clone());
-                            ui.horizontal(|ui| {
-                                if ui.button("Pre file").clicked() {
-                                    let file = AppUi::pre_file(&self.media_path);
-                                    self.open_file(ctx, file.into());
-                                }
-                            });
-                            ui.horizontal(|ui| {
-                                if ui.button("ReOpen").clicked() {
-                                    self.open_file(ctx, self.media_path.clone().into());
-                                }
-                            });
-                            ui.horizontal(|ui| {
-                                if ui.button("Next file").clicked() {
-                                    let file = AppUi::next_file(&self.media_path);
-                                    self.open_file(ctx, file.into());
-                                }
-                            });
+                egui::CentralPanel::default().show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if ui.button("Exit").clicked() {
+                            self.command_ui.set(CommandUi::Close);
                         }
-                        if let Some(player) = &mut self.player {
-                            ui.horizontal(|ui| {
-                                let (mut go_amount, mut go_packet) = match self.command_go_ui.get() {
-                                    CommandGo::Packet(v) => (v, true),
-                                    _ => (10, false),
-                                };
-                                if ui.checkbox(&mut go_packet, "go packets: ").changed() {
-                                    if go_packet {
-                                        self.command_go_ui.set(CommandGo::Packet(go_amount));
-                                    } else {
-                                        self.command_go_ui.set(CommandGo::None);
-                                    }
-                                }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Open").clicked()
+                            && let Some(buf) = Self::select_file()
+                        {
+                            self.open_file(ui, buf);
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Stop").clicked() {
+                            self.player = None;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Pause").clicked()
+                            && let Some(p) = &mut self.player
+                        {
+                            p.pause();
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui.button("Start").clicked()
+                            && let Some(p) = &mut self.player
+                        {
+                            p.start();
+                        }
+                    });
+                    ui.checkbox(&mut self.no_scale, "no scale");
+
+                    if !self.media_path.is_empty() {
+                        ui.horizontal(|ui| {
+                            if ui.button("Full Screen").clicked() {
+                                self.command_ui.set(CommandUi::FullscreenToggle);
+                            }
+                        });
+                        ui.label(self.media_path.clone());
+                        ui.horizontal(|ui| {
+                            if ui.button("Pre file").clicked() {
+                                let file = AppUi::pre_file(&self.media_path);
+                                self.open_file(ui, file.into());
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("ReOpen").clicked() {
+                                self.open_file(ui, self.media_path.clone().into());
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            if ui.button("Next file").clicked() {
+                                let file = AppUi::next_file(&self.media_path);
+                                self.open_file(ui, file.into());
+                            }
+                        });
+                    }
+                    if let Some(player) = &mut self.player {
+                        ui.horizontal(|ui| {
+                            let (mut go_amount, mut go_packet) = match self.command_go_ui.get() {
+                                CommandGo::Packet(v) => (v, true),
+                                _ => (10, false),
+                            };
+                            if ui.checkbox(&mut go_packet, "go packets: ").changed() {
                                 if go_packet {
-                                    let mut str_amount = format!("{go_amount}");
-                                    if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
-                                        && let Ok(v) = str_amount.parse()
-                                    {
-                                        go_amount = v;
-                                        self.command_go_ui.set(CommandGo::Packet(go_amount));
-                                    }
+                                    self.command_go_ui.set(CommandGo::Packet(go_amount));
+                                } else {
+                                    self.command_go_ui.set(CommandGo::None);
                                 }
-                            });
-                            ui.horizontal(|ui| {
-                                let (mut go_amount, mut go_frame) = match self.command_go_ui.get() {
-                                    CommandGo::Frame(v) => (v, true),
-                                    _ => (5, false),
-                                };
-                                if ui.checkbox(&mut go_frame, "go frames: ").changed() {
-                                    if go_frame {
-                                        self.command_go_ui.set(CommandGo::Frame(go_amount));
-                                    } else {
-                                        self.command_go_ui.set(CommandGo::None);
-                                    }
-                                }
-                                if go_frame {
-                                    let mut str_amount = format!("{go_amount}");
-                                    if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
-                                        && let Ok(v) = str_amount.parse()
-                                    {
-                                        go_amount = v;
-                                        self.command_go_ui.set(CommandGo::Frame(go_amount));
-                                    }
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                let (mut go_amount, mut seek_ms) = match self.command_go_ui.get() {
-                                    CommandGo::GoMs(v) => (v, true),
-                                    _ => (5000, false),
-                                };
-                                if ui.checkbox(&mut seek_ms, "go ms: ").changed() {
-                                    if seek_ms {
-                                        self.command_go_ui.set(CommandGo::GoMs(go_amount));
-                                    } else {
-                                        self.command_go_ui.set(CommandGo::None);
-                                    }
-                                }
-                                if seek_ms {
-                                    let mut str_amount = format!("{go_amount}");
-                                    if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
-                                        && let Ok(v) = str_amount.parse()
-                                    {
-                                        go_amount = v;
-                                        self.command_go_ui.set(CommandGo::GoMs(go_amount));
-                                    }
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                if ui.button("Go").clicked() {
-                                    player.go_ahead_ui(&self.command_go_ui);
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                if ui.button("Tab seek: ").clicked() {
-                                    player.tab_seek();
-                                }
-                                let mut str_amount = format!("{}", player.tab_seek_ms);
+                            }
+                            if go_packet {
+                                let mut str_amount = format!("{go_amount}");
                                 if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
                                     && let Ok(v) = str_amount.parse()
                                 {
-                                    player.tab_seek_ms = v;
+                                    go_amount = v;
+                                    self.command_go_ui.set(CommandGo::Packet(go_amount));
                                 }
-                            });
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            let (mut go_amount, mut go_frame) = match self.command_go_ui.get() {
+                                CommandGo::Frame(v) => (v, true),
+                                _ => (5, false),
+                            };
+                            if ui.checkbox(&mut go_frame, "go frames: ").changed() {
+                                if go_frame {
+                                    self.command_go_ui.set(CommandGo::Frame(go_amount));
+                                } else {
+                                    self.command_go_ui.set(CommandGo::None);
+                                }
+                            }
+                            if go_frame {
+                                let mut str_amount = format!("{go_amount}");
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                    && let Ok(v) = str_amount.parse()
+                                {
+                                    go_amount = v;
+                                    self.command_go_ui.set(CommandGo::Frame(go_amount));
+                                }
+                            }
+                        });
 
-                            ui.horizontal(|ui| {
-                                if ui.button(" + ").on_hover_text("+ Volume").clicked() {
-                                    let v = player::kits::Volume::plus_volume(player.audio_volume.get());
-                                    player.audio_volume.set(v);
+                        ui.horizontal(|ui| {
+                            let (mut go_amount, mut seek_ms) = match self.command_go_ui.get() {
+                                CommandGo::GoMs(v) => (v, true),
+                                _ => (5000, false),
+                            };
+                            if ui.checkbox(&mut seek_ms, "go ms: ").changed() {
+                                if seek_ms {
+                                    self.command_go_ui.set(CommandGo::GoMs(go_amount));
+                                } else {
+                                    self.command_go_ui.set(CommandGo::None);
                                 }
-                                let mut s = player::kits::Volume::int_volume(player.audio_volume.get());
-                                if ui.add(egui::Slider::new(&mut s, 0..=1000).suffix("")).changed() {
-                                    let v = player::kits::Volume::f64_volume(s);
-                                    player.audio_volume.set(v);
-                                };
-                                if ui.button(" - ").on_hover_text("- Volume").clicked() {
-                                    let v = player::kits::Volume::minus_volume(player.audio_volume.get());
-                                    player.audio_volume.set(v);
+                            }
+                            if seek_ms {
+                                let mut str_amount = format!("{go_amount}");
+                                if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                    && let Ok(v) = str_amount.parse()
+                                {
+                                    go_amount = v;
+                                    self.command_go_ui.set(CommandGo::GoMs(go_amount));
                                 }
-                            });
+                            }
+                        });
 
-                            ui.horizontal(|ui| {
-                                ui.checkbox(&mut self.auto_play_next, "Auto Play Next");
-                            });
-                        }
-                    });
-                    // ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+                        ui.horizontal(|ui| {
+                            if ui.button("Go").clicked() {
+                                player.go_ahead_ui(&self.command_go_ui);
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            if ui.button("Tab seek: ").clicked() {
+                                player.tab_seek();
+                            }
+                            let mut str_amount = format!("{}", player.tab_seek_ms);
+                            if ui.add(egui::TextEdit::singleline(&mut str_amount)).changed()
+                                && let Ok(v) = str_amount.parse()
+                            {
+                                player.tab_seek_ms = v;
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            if ui.button(" + ").on_hover_text("+ Volume").clicked() {
+                                let v = player::kits::Volume::plus_volume(player.audio_volume.get());
+                                player.audio_volume.set(v);
+                            }
+                            let mut s = player::kits::Volume::int_volume(player.audio_volume.get());
+                            if ui.add(egui::Slider::new(&mut s, 0..=1000).suffix("")).changed() {
+                                let v = player::kits::Volume::f64_volume(s);
+                                player.audio_volume.set(v);
+                            };
+                            if ui.button(" - ").on_hover_text("- Volume").clicked() {
+                                let v = player::kits::Volume::minus_volume(player.audio_volume.get());
+                                player.audio_volume.set(v);
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut self.auto_play_next, "Auto Play Next");
+                        });
+                    }
                 });
+                // ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+            });
         }
     }
 }
@@ -587,10 +580,11 @@ impl AppUi {
 }
 
 impl eframe::App for AppUi {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        self.handle_command_ui(ctx);
+    //&mut self, ui: &mut egui::Ui, frame: &mut Frame
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.handle_command_ui(ui.ctx());
         let frame = egui::Frame::default();
         // self.title_bar(ctx, frame);
-        self.main_frame(ctx, frame);
+        self.main_frame(ui, frame);
     }
 }
