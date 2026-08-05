@@ -1,5 +1,5 @@
 use eframe::Frame;
-use egui::{Context, Visuals};
+use egui::Visuals;
 
 fn main() {
     env_logger::init();
