@@ -13,9 +13,9 @@ license = "Apache-2.0"
 [dependencies]
 log = "0.4.33"
 env_logger = "0.11.11"
-egui = { version = "0.35.0" }
+egui = { version = "0.36.1" }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
-eframe = { version = "0.35.0", features = ["wgpu"]}
+eframe = { version = "0.36.1", features = ["wgpu"]}
 
 rfd = "0.17.2"
 ffmpeg-next = {version = "9.0.0", default-features = true}

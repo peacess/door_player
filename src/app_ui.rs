@@ -210,7 +210,10 @@ impl AppUi {
         egui::CentralPanel::default().frame(frame).show(ui, |rigth_ui| {
             {
                 let file = rigth_ui.input(|s| match s.raw.dropped_files.first() {
-                    Some(egui::DroppedFile { path: Some(first), .. }) => Some(first.clone()),
+                    Some(t_file) => {
+                        log::info!("dropped files: {:?}", t_file);
+                        Some(t_file.path().to_path_buf())
+                    }
                     _ => None,
                 });
                 if let Some(f) = file {

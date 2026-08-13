@@ -26,7 +26,7 @@ clean:
 	rm Cargo.lock
 rebuild: clean build
 upgrade:
-	cargo upgrade && cargo update
+	cargo upgrade --incompatible
 format:
 	cargo +nightly fmt
 install:

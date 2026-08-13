@@ -254,6 +254,17 @@ impl Player {
         let tex_mngr = ctx.tex_manager();
         let tex_id = tex_mngr.write().alloc(name, image, egui::TextureOptions::LINEAR);
         TextureHandleNoMut::new(tex_mngr, tex_id)
+
+        // let color_img = egui::ColorImage::filled(
+        //     [124, 124],
+        //     egui::Color32::TRANSPARENT
+        // );
+        // let texture_handle = ctx.load_texture(
+        //     "video_stream_default",
+        //     color_img,
+        //     egui::TextureOptions::LINEAR,
+        // );
+        // TextureHandleNoMut::new(ctx.tex_manager(), texture_handle.id())
     }
 
     pub fn frame_to_color_image(frame: &ffmpeg::frame::Video) -> Result<egui::ColorImage, ffmpeg::Error> {
