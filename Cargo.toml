@@ -13,9 +13,9 @@ license = "Apache-2.0"
 [dependencies]
 log = "0.4.34"
 env_logger = "0.11.11"
-egui = { version = "0.36.1" }
+egui = { version = "0.36.2" }
 #default: "accesskit","default_fonts","glow","wayland","web_screen_reader","winit/default","x11",
-eframe = { version = "0.36.1", features = ["wgpu"]}
+eframe = { version = "0.36.2", features = ["wgpu"]}
 
 rfd = "0.17.2"
 ffmpeg-next = {version = "9.0.0", default-features = true}
@@ -35,7 +35,7 @@ kanal = "0.1.1"
 
 chrono ="0.4.45"
 anyhow = "1.0.104"
-reqwest = { version = "0.13.4", features = ["blocking"] }
+reqwest = { version = "0.13.5", features = ["blocking"] }
 
 # [dev-dependencies]
 # aws-lc-sys = "0.22.0"

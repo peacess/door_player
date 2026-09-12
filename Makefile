@@ -62,3 +62,5 @@ zip_linux: build cp_linux
 tool_windows:
 	# install choco
 	choco install zip jq -y
+install_vcpkg:
+	vcpkg.exe install --triplet=x64-windows-static
