@@ -7,6 +7,7 @@ VERSION := $(shell cargo metadata --no-deps --format-version=1 | jq -r ".package
 ifeq ($(OS),Windows_NT)
 	cp_cmd = cp_windows
 	zip_cmd = zip_windows
+	FFMPEG_DIR:=$(CURDIR)/vcpkg_installed/x64-windows
 else ifeq ($(shell uname -s),Linux)
 	cp_cmd = cp_linux
 	zip_cmd = zip_linux
@@ -18,12 +19,14 @@ else
 endif
 
 build:
+	PKG_CONFIG_PATH="$(CURDIR)/vcpkg_installed/x64-windows/lib/pkgconfig" \
+	FFMPEG_DIR="$(CURDIR)/vcpkg_installed/x64-windows" \
 	cargo build --release
 release: build
 	cp -f target/release/door_player ${HOME}/bin/door_player/
 clean:
 	cargo clean
-	rm Cargo.lock
+	rm -rf Cargo.lock bin out
 rebuild: clean build
 upgrade:
 	cargo upgrade --incompatible
@@ -39,14 +42,14 @@ cp_windows:
 	mkdir -p bin
 	rm -rf bin/*
 	cp -f target/release/door_player.exe ./bin/
-	cp -f ${FFMPEG_DIR}/bin/avformat-62.dll ./bin/
-	cp -f ${FFMPEG_DIR}/bin/avutil-60.dll ./bin/
+	cp -f ${FFMPEG_DIR}/bin/avformat-63.dll ./bin/
+	cp -f ${FFMPEG_DIR}/bin/avutil-61.dll ./bin/
 	# cp -f ${FFMPEG_DIR}/bin/pkgconf-5.dll ./bin/
-	cp -f ${FFMPEG_DIR}/bin/swresample-6.dll ./bin/
-	cp -f ${FFMPEG_DIR}/bin/swscale-9.dll ./bin/
-	cp -f ${FFMPEG_DIR}/bin/avcodec-62.dll  ./bin/
-	cp -f ${FFMPEG_DIR}/bin/avdevice-62.dll ./bin/
-	cp -f ${FFMPEG_DIR}/bin/avfilter-11.dll ./bin/
+	cp -f ${FFMPEG_DIR}/bin/swresample-7.dll ./bin/
+	cp -f ${FFMPEG_DIR}/bin/swscale-10.dll ./bin/
+	cp -f ${FFMPEG_DIR}/bin/avcodec-63.dll  ./bin/
+	cp -f ${FFMPEG_DIR}/bin/avdevice-63.dll ./bin/
+	cp -f ${FFMPEG_DIR}/bin/avfilter-12.dll ./bin/
 cp_macos:
 
 zip:
@@ -63,4 +66,4 @@ tool_windows:
 	# install choco
 	choco install zip jq -y
 install_vcpkg:
-	vcpkg.exe install --triplet=x64-windows-static
+	vcpkg.exe install --x-manifest-root=.

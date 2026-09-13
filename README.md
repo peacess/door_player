@@ -53,15 +53,25 @@ Features:
 ```
 
 ## window
-
+install vcpkg  
 ```shell
    git clone https://github.com/microsoft/vcpkg.git
    cd  vcpkg
    .\bootstrap-vcpkg.bat
-   .\vcpkg.exe install ffmpeg
-   set FFMPEG_DIR=C:/lang/vcpkg/installed/x64-windows
+   # config the env path for vcpkg
+   #
 ```
-
+install scoop
+```shell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+```
+build ffmpeg with vcpkg
+```shell
+  git-bash.exe
+  cd project door_player source
+  make install_vcpkg
+```
 # ffmpeg code(just record) 
 clone the ffmpeg  
 cd ffmpeg  
