@@ -41,8 +41,9 @@ install:
 	cargo install cargo-update cargo-edit
 cp:
 	$(MAKE) $(cp_cmd)
-cp_linux: build
-	cp -f target/release/door_player ${HOME}/bin/door_player
+cp_linux:
+	mkdir -p bin
+	cp -f target/release/door_player bin/door_player
 cp_windows:
 	mkdir -p bin
 	rm -rf bin/*
