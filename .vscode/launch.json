@@ -19,7 +19,6 @@
                     "kind": "bin"
                 },
             },
-            "program": "${workspaceFolder}/target/debug/door_player.exe",
             "cwd": "${workspaceFolder}"
         },
         {
@@ -60,7 +59,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "tests door_player",
+            "name": "tests door_player linux",
             "cargo": {
                 "args": [
                     "test",
