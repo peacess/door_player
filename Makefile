@@ -19,9 +19,14 @@ else
 endif
 
 build:
+ifeq  ($(OS),Windows_NT)
 	PKG_CONFIG_PATH="$(CURDIR)/vcpkg_installed/x64-windows/lib/pkgconfig" \
 	FFMPEG_DIR="$(CURDIR)/vcpkg_installed/x64-windows" \
 	cargo build --release
+else
+	cargo build --release
+endif
+
 release: build
 	cp -f target/release/door_player ${HOME}/bin/door_player/
 clean:

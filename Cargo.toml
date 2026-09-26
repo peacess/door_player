@@ -25,7 +25,7 @@ ffmpeg-next = {version = "9.0.0", default-features = true}
 cpal = "0.18.2"
 spin_sleep = "1.3.3"
 
-ringbuf = "0.5.1"
+ringbuf = "0.5.2"
 rust_kits = {version = "0.1.6"}
 #
 parking_lot = "0.12.5"

@@ -19,13 +19,22 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
-            "cwd": "${workspaceFolder}/bin"
+            "cwd": "${workspaceFolder}",
+            "linux": {
+                "env": {
+                //   "LD_LIBRARY_PATH": "${workspaceFolder}/"
+                }
+            },
+            "windows": {
+                "env": {
+                    "PATH": "${workspaceFolder}/vcpkg_installed/x64-windows/bin"
+                }
+            }
         },
         {
             "type": "lldb",
             "request": "launch",
-            "name": "unit tests door_player",
+            "name": "tests door_player",
             "cargo": {
                 "args": [
                     "test",
@@ -39,7 +48,12 @@
                 }
             },
             "args": [],
-            "cwd": "${workspaceFolder}/bin"
+            "cwd": "${workspaceFolder}",
+            "windows": {
+                "env": {
+                    "PATH": "${workspaceFolder}/vcpkg_installed/x64-windows/bin"
+                }
+            }
         }
     ]
 }
