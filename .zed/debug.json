@@ -4,21 +4,57 @@
 // see: https://zed.dev/docs/debugger
 [
   {
-    "label": "door_player",
+    "label": "door_player window",
     "adapter": "CodeLLDB",
     "build":{
       "command": "cargo",
-      "args": ["build"]
+      "args": ["build"],
+      "env": {
+     			"PKG_CONFIG_PATH":"$ZED_WORKTREE_ROOT/vcpkg_installed/x64-windows/lib/pkgconfig",
+          "FFMPEG_DIR":"$ZED_WORKTREE_ROOT/vcpkg_installed/x64-windows",
+      }
+    },
+    "sourceLanguages": ["rust"],
+    "request": "launch",
+    "program": "$ZED_WORKTREE_ROOT/target/debug/door_player.exe",
+    "cwd": "$ZED_WORKTREE_ROOT/vcpkg_installed/x64-windows/bin",
+  //   "env": {
+		// 	"PATH": "$ZED_WORKTREE_ROOT/vcpkg_installed/x64-windows/bin;$PATH",
+		// },
+  },
+  {
+    "label": "door_player linux",
+    "adapter": "CodeLLDB",
+    "build":{
+      "command": "cargo",
+      "args": ["build"],
     },
     "sourceLanguages": ["rust"],
     "cwd": "$ZED_WORKTREE_ROOT",
   },
   {
-    "label": "tests door_player",
+    "label": "tests door_player window",
     "adapter": "CodeLLDB",
     "build": {
       "command": "cargo",
-      "args": ["test"]
+      "args": ["test"],
+      "env": {
+     			"PKG_CONFIG_PATH":"$ZED_WORKTREE_ROOT/vcpkg_installed/x64-windows/lib/pkgconfig",
+          "FFMPEG_DIR":"$ZED_WORKTREE_ROOT/vcpkg_installed/x64-windows",
+      },
+    },
+    "sourceLanguages": ["rust"],
+    "cwd": "$ZED_WORKTREE_ROOT/vcpkg_installed/x64-windows/bin",
+  //   "env": {
+		// 	"PATH": "$ZED_WORKTREE_ROOT/vcpkg_installed/x64-windows/bin;$PATH",
+		// },
+  },
+  {
+    "label": "tests door_player linux",
+    "adapter": "CodeLLDB",
+    "build": {
+      "command": "cargo",
+      "args": ["test"],
     },
     "sourceLanguages": ["rust"],
     "cwd": "$ZED_WORKTREE_ROOT",

@@ -7,7 +7,7 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "door_player",
+            "name": "door_player linux",
             "cargo": {
                 "args": [
                     "build",
@@ -17,17 +17,43 @@
                 "filter": {
                     "name": "door_player",
                     "kind": "bin"
+                },
+            },
+            "program": "${workspaceFolder}/target/debug/door_player.exe",
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "door_player window",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=door_player",
+                    "--package=door_player"
+                ],
+                "filter": {
+                    "name": "door_player",
+                    "kind": "bin"
+                },
+                "env": {
+                    "PKG_CONFIG_PATH":"${workspaceFolder}/vcpkg_installed/x64-windows/lib/pkgconfig",
+                    "FFMPEG_DIR":"${workspaceFolder}/vcpkg_installed/x64-windows",
                 }
             },
+            "program": "${workspaceFolder}/target/debug/door_player.exe",
             "cwd": "${workspaceFolder}",
             "linux": {
                 "env": {
                 //   "LD_LIBRARY_PATH": "${workspaceFolder}/"
                 }
             },
+            "env":{
+                "RUST_LOG": "debug"
+            },
             "windows": {
                 "env": {
-                    "PATH": "${workspaceFolder}/vcpkg_installed/x64-windows/bin"
+                    "PATH": "${workspaceFolder}/vcpkg_installed/x64-windows/bin;${env:PATH}",
                 }
             }
         },
@@ -49,9 +75,32 @@
             },
             "args": [],
             "cwd": "${workspaceFolder}",
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "tests door_player window",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=door_player",
+                    "--package=door_player"
+                ],
+                "filter": {
+                    "name": "door_player",
+                    "kind": "bin"
+                },
+                "env": {
+                    "PKG_CONFIG_PATH":"${workspaceFolder}/vcpkg_installed/x64-windows/lib/pkgconfig",
+                    "FFMPEG_DIR":"${workspaceFolder}/vcpkg_installed/x64-windows",
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}",
             "windows": {
                 "env": {
-                    "PATH": "${workspaceFolder}/vcpkg_installed/x64-windows/bin"
+                    "PATH": "${workspaceFolder}/vcpkg_installed/x64-windows/bin;${env:PATH}"
                 }
             }
         }
