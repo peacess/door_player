@@ -63,11 +63,11 @@ zip:
 zip_windows: build cp_windows
 	mkdir -p out
 	rm -rf out/*
-	zip out/$(NAME)-$(VERSION).zip bin/*
+	zip out/$(NAME)-win-$(VERSION).zip bin/*
 zip_linux: build cp_linux
 	mkdir -p out
 	rm -rf out/*
-	zip out/$(NAME)-$(VERSION).zip bin/*
+	zip out/$(NAME)-linux-$(VERSION).zip bin/*
 tool_windows:
 	# install choco
 	choco install zip jq -y
